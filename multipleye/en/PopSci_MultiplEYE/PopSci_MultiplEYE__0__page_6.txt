@@ -1,0 +1,2 @@
+Why is eye-tracking while reading especially interesting for our project?
+As you read these words, the eye-tracker follows your eye's movements over the text. This provides information about how long you spend looking at a text, or more specifically, how long you spent on each word, which words you skipped, which words you dwelled on, and whether you had to go back and reread parts of the text to understand it better.

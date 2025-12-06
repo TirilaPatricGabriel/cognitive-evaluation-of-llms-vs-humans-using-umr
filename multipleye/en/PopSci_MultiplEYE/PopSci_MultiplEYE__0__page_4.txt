@@ -1,0 +1,2 @@
+What is "eye-tracking"?
+Eye-tracking is the process of measuring the point of gaze - where you are looking - and the movements of the eyes between fixed points of gaze. The device used to measure the eye positions and eye movements is called an eye-tracker. It consists of an infrared camera, using a light frequency that does not bother or hurt the human eye.

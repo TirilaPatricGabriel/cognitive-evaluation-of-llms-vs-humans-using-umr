@@ -2,3 +2,8 @@
 EmTeC/
 venv/
 data/
+__pycache__/
+*.pyc
+app/saved_outputs/
+app/__pycache__
+app/saved_outputs/

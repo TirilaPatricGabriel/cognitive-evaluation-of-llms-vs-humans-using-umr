@@ -1,0 +1,14 @@
+prompt: |
+  You are a prompt reverse-engineering expert. Given the following text, analyze it and create a prompt that would instruct an AI to generate a similar text.
+
+  The prompt should capture:
+  - The writing style and tone
+  - The content structure
+  - The subject matter
+  - The level of formality
+  - The intended audience
+
+  Text to analyze:
+  {text}
+
+  Return ONLY the prompt, without any explanation or additional text.

@@ -1,6 +1,7 @@
+import pandas as pd
 from fastapi import FastAPI
-from app.loaders import load_multipleye_data
-from app.services import call_gemini, create_umr_parser, create_umr_analyzer
+from app.loaders import load_multipleye_data, load_zuco2_data
+from app.services import call_gemini, create_umr_parser, create_umr_analyzer, UMREyeTrackingComparator
 from app.utils.load_yaml_prompts import load_prompt
 from app.utils.umr_visualizer import UMRVisualizer
 import json
@@ -11,20 +12,29 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 app = FastAPI()
 
 
-@app.get("/load-data")
-def load_data():
-    df_ro, df_en = load_multipleye_data()
+@app.get("/load-data/{dataset_name}")
+def load_data(dataset_name: str):
+    if dataset_name == "multipleye":
+        df_ro, df_en = load_multipleye_data()
 
-    return {
-        "romanian": {
-            "count": len(df_ro),
-            "sample": df_ro.head(1).to_dict(orient="records")
-        },
-        "english": {
-            "count": len(df_en),
-            "sample": df_en.head(1).to_dict(orient="records")
+        return {
+            "romanian": {
+                "count": len(df_ro),
+                "sample": df_ro.head(1).to_dict(orient="records")
+            },
+            "english": {
+                "count": len(df_en),
+                "sample": df_en.head(1).to_dict(orient="records")
+            }
         }
-    }
+    elif dataset_name == "zuco2":
+        df_zuco = load_zuco2_data()
+        return {
+            "zuco2": {
+                "count": len(df_zuco),
+                "sample": df_zuco.head(1).to_dict(orient="records")
+            }
+        }
 
 
 @app.post("/reverse-engineer")
@@ -469,132 +479,202 @@ def full_pipeline():
     }
 
 
-@app.post("/generate-umr-graphs")
-def generate_umr_graphs(input_file: str = None):
+@app.post("/generate-umr-graphs/{dataset_name}")
+def generate_umr_graphs(dataset_name, input_file: str = None):
     """
     Generate UMR graphs for both human-written and LLM-generated texts.
     """
     print("Starting UMR graph generation")
+    
+    if dataset_name == "multipleye":
 
-    # Load the reversed prompts file (contains original texts)
-    if not input_file:
-        prompts_dir = Path("app/saved_outputs/prompts")
-        prompt_files = sorted(prompts_dir.glob("reversed_prompts_*.json"))
-        if not prompt_files:
-            return {"error": "No reversed prompts files found"}
-        input_file = str(prompt_files[-1])
+        # Load the reversed prompts file (contains original texts)
+        if not input_file:
+            prompts_dir = Path("app/saved_outputs/prompts")
+            prompt_files = sorted(prompts_dir.glob("reversed_prompts_*.json"))
+            if not prompt_files:
+                return {"error": "No reversed prompts files found"}
+            input_file = str(prompt_files[-1])
 
-    print(f"Loading data from: {input_file}")
+        print(f"Loading data from: {input_file}")
 
-    with open(input_file, 'r', encoding='utf-8') as f:
-        prompts_data = json.load(f)
+        with open(input_file, 'r', encoding='utf-8') as f:
+            prompts_data = json.load(f)
 
-    # Also load generated texts if available
-    texts_dir = Path("app/saved_outputs/generated_texts")
-    text_files = sorted(texts_dir.glob("generated_texts_*.json"))
-    generated_data = []
+        # Also load generated texts if available
+        texts_dir = Path("app/saved_outputs/generated_texts")
+        text_files = sorted(texts_dir.glob("generated_texts_*.json"))
+        generated_data = []
 
-    if text_files:
-        print(f"Loading generated texts from: {text_files[-1]}")
-        with open(text_files[-1], 'r', encoding='utf-8') as f:
-            generated_data = json.load(f)
+        if text_files:
+            print(f"Loading generated texts from: {text_files[-1]}")
+            with open(text_files[-1], 'r', encoding='utf-8') as f:
+                generated_data = json.load(f)
 
-    # Create UMR parser instance
-    parser = create_umr_parser()
+        # Create UMR parser instance
+        parser = create_umr_parser()
 
-    # Prepare tasks for human texts
-    human_tasks = []
-    for item in prompts_data:
-        human_tasks.append({
-            "text": item.get("original_text", ""),
-            "language": item["language"],
+        # Prepare tasks for human texts
+        human_tasks = []
+        for item in prompts_data:
+            human_tasks.append({
+                "text": item.get("original_text", ""),
+                "language": item["language"],
+                "metadata": {
+                    "source": "human",
+                    "subcategory": item.get("subcategory", ""),
+                    "filename": item.get("filename", "")
+                }
+            })
+
+        # Prepare tasks for generated texts
+        generated_tasks = []
+        for item in generated_data:
+            generated_tasks.append({
+                "text": item.get("generated_text", ""),
+                "language": item["language"],
+                "metadata": {
+                    "source": "llm",
+                    "subcategory": item.get("subcategory", ""),
+                    "reversed_prompt": item.get("reversed_prompt", "")
+                }
+            })
+
+        all_tasks = human_tasks + generated_tasks
+        total = len(all_tasks)
+
+        print(f"Processing {len(human_tasks)} human texts and {len(generated_tasks)} generated texts")
+        print(f"Total: {total} UMR graphs to generate")
+
+        def process_umr_task_multipleye(task):
+            result = parser.parse_text(task["text"], task["language"])
+            result.update({
+                "original_text": task["text"],
+                "language": task["language"],
+                "source": task["metadata"]["source"],
+                "subcategory": task["metadata"].get("subcategory", ""),
+                "filename": task["metadata"].get("filename", "")
+            })
+            return result
+
+        results = []
+        with ThreadPoolExecutor(max_workers=50) as executor:
+            futures = {executor.submit(process_umr_task_multipleye, task): i for i, task in enumerate(all_tasks)}
+            for idx, future in enumerate(as_completed(futures), 1):
+                result = future.result()
+                results.append(result)
+                print(f"[{idx}/{total}] Done - {result['source']} ({result['language']})")
+
+        # Separate human and LLM results
+        human_results = [r for r in results if r["source"] == "human"]
+        llm_results = [r for r in results if r["source"] == "llm"]
+
+        # Save results
+        save_dir = Path("app/saved_outputs/umr_graphs")
+        save_dir.mkdir(parents=True, exist_ok=True)
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_file = save_dir / f"umr_graphs_{timestamp}.json"
+
+        output_data = {
+            "human_graphs": human_results,
+            "llm_graphs": llm_results,
             "metadata": {
-                "source": "human",
-                "subcategory": item.get("subcategory", ""),
-                "filename": item.get("filename", "")
+                "total_human": len(human_results),
+                "total_llm": len(llm_results),
+                "timestamp": timestamp,
+                "source_file": input_file
             }
-        })
-
-    # Prepare tasks for generated texts
-    generated_tasks = []
-    for item in generated_data:
-        generated_tasks.append({
-            "text": item.get("generated_text", ""),
-            "language": item["language"],
-            "metadata": {
-                "source": "llm",
-                "subcategory": item.get("subcategory", ""),
-                "reversed_prompt": item.get("reversed_prompt", "")
-            }
-        })
-
-    all_tasks = human_tasks + generated_tasks
-    total = len(all_tasks)
-
-    print(f"Processing {len(human_tasks)} human texts and {len(generated_tasks)} generated texts")
-    print(f"Total: {total} UMR graphs to generate")
-
-    def process_umr_task(task):
-        result = parser.parse_text(task["text"], task["language"])
-        result.update({
-            "original_text": task["text"],
-            "language": task["language"],
-            "source": task["metadata"]["source"],
-            "subcategory": task["metadata"].get("subcategory", ""),
-            "filename": task["metadata"].get("filename", "")
-        })
-        return result
-
-    results = []
-    with ThreadPoolExecutor(max_workers=50) as executor:
-        futures = {executor.submit(process_umr_task, task): i for i, task in enumerate(all_tasks)}
-        for idx, future in enumerate(as_completed(futures), 1):
-            result = future.result()
-            results.append(result)
-            print(f"[{idx}/{total}] Done - {result['source']} ({result['language']})")
-
-    # Separate human and LLM results
-    human_results = [r for r in results if r["source"] == "human"]
-    llm_results = [r for r in results if r["source"] == "llm"]
-
-    # Save results
-    save_dir = Path("app/saved_outputs/umr_graphs")
-    save_dir.mkdir(parents=True, exist_ok=True)
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_file = save_dir / f"umr_graphs_{timestamp}.json"
-
-    output_data = {
-        "human_graphs": human_results,
-        "llm_graphs": llm_results,
-        "metadata": {
-            "total_human": len(human_results),
-            "total_llm": len(llm_results),
-            "timestamp": timestamp,
-            "source_file": input_file
         }
-    }
 
-    with open(output_file, 'w', encoding='utf-8') as f:
-        json.dump(output_data, f, ensure_ascii=False, indent=2)
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(output_data, f, ensure_ascii=False, indent=2)
 
-    print(f"Saved to {output_file}")
-    print("UMR graph generation complete")
+        print(f"Saved to {output_file}")
+        print("UMR graph generation complete")
 
-    return {
-        "human_graphs": human_results,
-        "llm_graphs": llm_results,
-        "count": {
-            "human": len(human_results),
-            "llm": len(llm_results),
-            "total": total
-        },
-        "saved_to": str(output_file)
-    }
+        return {
+            "human_graphs": human_results,
+            "llm_graphs": llm_results,
+            "count": {
+                "human": len(human_results),
+                "llm": len(llm_results),
+                "total": total
+            },
+            "saved_to": str(output_file)
+        }
+        
+    elif dataset_name == "zuco2":
+        df_zuco = load_zuco2_data()
+        # Generate UMR graphs for Zuco2 dataset
+        df_zuco = load_zuco2_data()
+
+        # Create UMR parser instance
+        parser = create_umr_parser()
+
+        # Prepare tasks for Zuco2 sentences
+        zuco_tasks = []
+        for _, row in df_zuco.iterrows():
+            zuco_tasks.append({
+                "text": row['sentence'],
+                "language": "english",
+                "metadata": {
+                    "source": "zuco2",
+                    "sentence_id": row['sentence_id']
+                }
+            })
+
+        total = len(zuco_tasks)
+        print(f"Processing {total} Zuco2 sentences")
+
+        def process_umr_task_zuco2(task):
+            result = parser.parse_text(task["text"], task["language"])
+            result.update({
+                "text": task["text"],
+                "language": task["language"],
+                "source": task["metadata"]["source"],
+                "sentence_id": task["metadata"]["sentence_id"]
+            })
+            return result
+
+        results = []
+        with ThreadPoolExecutor(max_workers=50) as executor:
+            futures = {executor.submit(process_umr_task_zuco2, task): i for i, task in enumerate(zuco_tasks)}
+            for idx, future in enumerate(as_completed(futures), 1):
+                result = future.result()
+                results.append(result)
+            print(f"[{idx}/{total}] Done - Sentence ID: {result['sentence_id']}")
+
+        # Save results
+        save_dir = Path("app/saved_outputs/umr_graphs")
+        save_dir.mkdir(parents=True, exist_ok=True)
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_file = save_dir / f"umr_graphs_zuco2_{timestamp}.json"
+
+        output_data = {
+            "zuco2_graphs": results,
+            "metadata": {
+                "total_sentences": len(results),
+                "timestamp": timestamp
+            }
+        }
+
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(output_data, f, ensure_ascii=False, indent=2)
+
+        print(f"Saved to {output_file}")
+        print("UMR graph generation for Zuco2 complete")
+
+        return {
+            "zuco2_graphs": results,
+            "count": len(results),
+            "saved_to": str(output_file)
+        }
 
 
 @app.post("/visualize-umr-graphs")
-def visualize_umr_graphs(input_file: str = None):
+def visualize_umr_graphs(dataset_name, input_file: str = None):
     """
     Visualize and analyze UMR graphs from a saved file.
     """
@@ -614,87 +694,129 @@ def visualize_umr_graphs(input_file: str = None):
 
     with open(input_file, 'r', encoding='utf-8') as f:
         data = json.load(f)
+        
+    if dataset_name == "multipleye":
 
-    human_graphs = data.get("human_graphs", [])
-    llm_graphs = data.get("llm_graphs", [])
+        human_graphs = data.get("human_graphs", [])
+        llm_graphs = data.get("llm_graphs", [])
 
-    # Create visualizer
-    visualizer = UMRVisualizer()
+        # Create visualizer
+        visualizer = UMRVisualizer()
 
-    # Process human graphs
-    human_visualizations = []
-    for graph_data in human_graphs:
-        viz = visualizer.create_visualization_summary(graph_data)
-        viz.update({
-            "subcategory": graph_data.get("subcategory", ""),
-            "filename": graph_data.get("filename", ""),
-            "source": "human"
-        })
-        human_visualizations.append(viz)
+        # Process human graphs
+        human_visualizations = []
+        for graph_data in human_graphs:
+            viz = visualizer.create_visualization_summary(graph_data)
+            viz.update({
+                "subcategory": graph_data.get("subcategory", ""),
+                "filename": graph_data.get("filename", ""),
+                "source": "human"
+            })
+            human_visualizations.append(viz)
 
-    # Process LLM graphs
-    llm_visualizations = []
-    for graph_data in llm_graphs:
-        viz = visualizer.create_visualization_summary(graph_data)
-        viz.update({
-            "subcategory": graph_data.get("subcategory", ""),
-            "source": "llm"
-        })
-        llm_visualizations.append(viz)
+        # Process LLM graphs
+        llm_visualizations = []
+        for graph_data in llm_graphs:
+            viz = visualizer.create_visualization_summary(graph_data)
+            viz.update({
+                "subcategory": graph_data.get("subcategory", ""),
+                "source": "llm"
+            })
+            llm_visualizations.append(viz)
 
-    # Compute aggregate statistics
-    human_stats = {
-        "total_graphs": len(human_visualizations),
-        "avg_depth": sum(v['structure']['stats']['depth'] for v in human_visualizations if v['success']) / max(len(human_visualizations), 1),
-        "avg_concepts": sum(v['structure']['stats']['num_concepts'] for v in human_visualizations if v['success']) / max(len(human_visualizations), 1),
-        "avg_roles": sum(v['structure']['stats']['num_roles'] for v in human_visualizations if v['success']) / max(len(human_visualizations), 1),
-        "with_aspect": sum(1 for v in human_visualizations if v.get('structure', {}).get('stats', {}).get('has_aspect', False)),
-        "with_temporal": sum(1 for v in human_visualizations if v.get('structure', {}).get('stats', {}).get('has_temporal', False))
-    }
+        # Compute aggregate statistics
+        human_stats = {
+            "total_graphs": len(human_visualizations),
+            "avg_depth": sum(v['structure']['stats']['depth'] for v in human_visualizations if v['success']) / max(len(human_visualizations), 1),
+            "avg_concepts": sum(v['structure']['stats']['num_concepts'] for v in human_visualizations if v['success']) / max(len(human_visualizations), 1),
+            "avg_roles": sum(v['structure']['stats']['num_roles'] for v in human_visualizations if v['success']) / max(len(human_visualizations), 1),
+            "with_aspect": sum(1 for v in human_visualizations if v.get('structure', {}).get('stats', {}).get('has_aspect', False)),
+            "with_temporal": sum(1 for v in human_visualizations if v.get('structure', {}).get('stats', {}).get('has_temporal', False))
+        }
 
-    llm_stats = {
-        "total_graphs": len(llm_visualizations),
-        "avg_depth": sum(v['structure']['stats']['depth'] for v in llm_visualizations if v['success']) / max(len(llm_visualizations), 1),
-        "avg_concepts": sum(v['structure']['stats']['num_concepts'] for v in llm_visualizations if v['success']) / max(len(llm_visualizations), 1),
-        "avg_roles": sum(v['structure']['stats']['num_roles'] for v in llm_visualizations if v['success']) / max(len(llm_visualizations), 1),
-        "with_aspect": sum(1 for v in llm_visualizations if v.get('structure', {}).get('stats', {}).get('has_aspect', False)),
-        "with_temporal": sum(1 for v in llm_visualizations if v.get('structure', {}).get('stats', {}).get('has_temporal', False))
-    }
+        llm_stats = {
+            "total_graphs": len(llm_visualizations),
+            "avg_depth": sum(v['structure']['stats']['depth'] for v in llm_visualizations if v['success']) / max(len(llm_visualizations), 1),
+            "avg_concepts": sum(v['structure']['stats']['num_concepts'] for v in llm_visualizations if v['success']) / max(len(llm_visualizations), 1),
+            "avg_roles": sum(v['structure']['stats']['num_roles'] for v in llm_visualizations if v['success']) / max(len(llm_visualizations), 1),
+            "with_aspect": sum(1 for v in llm_visualizations if v.get('structure', {}).get('stats', {}).get('has_aspect', False)),
+            "with_temporal": sum(1 for v in llm_visualizations if v.get('structure', {}).get('stats', {}).get('has_temporal', False))
+        }
 
-    # Save visualization results
-    save_dir = Path("app/saved_outputs/umr_visualizations")
-    save_dir.mkdir(parents=True, exist_ok=True)
+        # Save visualization results
+        save_dir = Path("app/saved_outputs/umr_visualizations")
+        save_dir.mkdir(parents=True, exist_ok=True)
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_file = save_dir / f"umr_visualizations_{timestamp}.json"
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_file = save_dir / f"umr_visualizations_{timestamp}.json"
 
-    output_data = {
-        "human_visualizations": human_visualizations,
-        "llm_visualizations": llm_visualizations,
-        "statistics": {
-            "human": human_stats,
-            "llm": llm_stats,
-            "comparison": {
-                "depth_difference": abs(human_stats["avg_depth"] - llm_stats["avg_depth"]),
-                "concept_difference": abs(human_stats["avg_concepts"] - llm_stats["avg_concepts"]),
-                "role_difference": abs(human_stats["avg_roles"] - llm_stats["avg_roles"])
-            }
-        },
-        "source_file": input_file
-    }
+        output_data = {
+            "human_visualizations": human_visualizations,
+            "llm_visualizations": llm_visualizations,
+            "statistics": {
+                "human": human_stats,
+                "llm": llm_stats,
+                "comparison": {
+                    "depth_difference": abs(human_stats["avg_depth"] - llm_stats["avg_depth"]),
+                    "concept_difference": abs(human_stats["avg_concepts"] - llm_stats["avg_concepts"]),
+                    "role_difference": abs(human_stats["avg_roles"] - llm_stats["avg_roles"])
+                }
+            },
+            "source_file": input_file
+        }
 
-    with open(output_file, 'w', encoding='utf-8') as f:
-        json.dump(output_data, f, ensure_ascii=False, indent=2)
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(output_data, f, ensure_ascii=False, indent=2)
 
-    print(f"Saved to {output_file}")
-    print("Visualization complete")
+        print(f"Saved to {output_file}")
+        print("Visualization complete")
 
-    return {
-        "statistics": output_data["statistics"],
-        "sample_human": human_visualizations[:3] if human_visualizations else [],
-        "sample_llm": llm_visualizations[:3] if llm_visualizations else [],
-        "saved_to": str(output_file)
-    }
+        return {
+            "statistics": output_data["statistics"],
+            "sample_human": human_visualizations[:3] if human_visualizations else [],
+            "sample_llm": llm_visualizations[:3] if llm_visualizations else [],
+            "saved_to": str(output_file)
+        }
+        
+    elif dataset_name == "zuco2":
+
+        zuco_graphs = data.get("zuco2_graphs", [])
+
+        # Create visualizer
+        visualizer = UMRVisualizer()
+
+        # Process Zuco2 graphs
+        zuco_visualizations = []
+        for graph_data in zuco_graphs:
+            viz = visualizer.create_visualization_summary(graph_data)
+            viz.update({
+                "sentence_id": graph_data.get("sentence_id", ""),
+                "source": "zuco2"
+            })
+            zuco_visualizations.append(viz)
+
+        # Save visualization results
+        save_dir = Path("app/saved_outputs/umr_visualizations")
+        save_dir.mkdir(parents=True, exist_ok=True)
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_file = save_dir / f"umr_visualizations_zuco2_{timestamp}.json"
+
+        output_data = {
+            "zuco2_visualizations": zuco_visualizations,
+            "source_file": input_file
+        }
+
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(output_data, f, ensure_ascii=False, indent=2)
+
+        print(f"Saved to {output_file}")
+        print("Visualization complete")
+
+        return {
+            "sample_zuco2": zuco_visualizations[:3] if zuco_visualizations else [],
+            "saved_to": str(output_file)
+        }
 
 
 @app.post("/analyze-umr-semantics")
@@ -760,4 +882,77 @@ def analyze_umr_semantics(input_file: str = None):
         "sample_comparisons": comparisons[:5],
         "total_analyzed": len(comparisons),
         "saved_to": str(output_file)
+    }
+    
+    
+@app.post("/compare-umr-with-eye-tracking")
+def compare_umr_with_eye_tracking(umr_input_file: str = None, eye_tracking_avg_sentence_file: str = None, eye_tracking_part_sentence_file: str = None):
+    print("Starting comparison of UMR graphs with eye-tracking data")
+
+    # Load UMR graphs
+    if not umr_input_file:
+        umr_dir = Path("app/saved_outputs/umr_graphs")
+        if not umr_dir.exists():
+            return {"error": "No UMR graphs directory found. Generate graphs first."}
+
+        umr_files = sorted(umr_dir.glob("umr_graphs_*.json"))
+        if not umr_files:
+            return {"error": "No UMR graph files found. Generate graphs first."}
+        umr_input_file = str(umr_files[-1])
+
+    print(f"Loading UMR graphs from: {umr_input_file}")
+    with open(umr_input_file, 'r', encoding='utf-8') as f:
+        umr_data = json.load(f)
+        
+    umr_graphs = umr_data.get("zuco2_graphs", [])
+        
+    # Get UMR sentence-level stats
+    umr_analyzer = create_umr_analyzer()
+    sentence_umr_stats = umr_analyzer.analyze_sentences(umr_graphs)
+    print(f"Analyzed UMR statistics for {len(sentence_umr_stats)} sentences")
+    
+    # Convert UMR stats to DataFrame
+    df_umr = pd.DataFrame.from_dict(sentence_umr_stats, orient="index")
+    df_umr.index.name = "sentence_id"
+    df_umr = df_umr.reset_index()
+    
+    # Load sentence-level average eye-tracking data
+    if not eye_tracking_avg_sentence_file:
+        eye_tracking_avg_sentence_file = "app/data/zuco2_average_sentence_level.csv"
+
+    if not Path(eye_tracking_avg_sentence_file).exists():
+        return {"error": "Average sentence-level eye-tracking file not found."}
+    
+    df_eye_avg = pd.read_csv(eye_tracking_avg_sentence_file)
+    
+    # Load sentence-level participant eye-tracking data
+    if not eye_tracking_part_sentence_file:
+        eye_tracking_part_sentence_file = "app/data/zuco2_participants_sentence_level.csv"
+        
+    if not Path(eye_tracking_part_sentence_file).exists():
+        return {"error": "Participant sentence-level eye-tracking file not found."}
+    
+    df_eye_part = pd.read_csv(eye_tracking_part_sentence_file)
+    
+    comparator = UMREyeTrackingComparator(df_umr, df_eye_avg, df_eye_part)
+
+    # Average sentence-level correlations
+    result_avg = comparator.compute_correlations(return_heatmap=True, participant_level=False)
+
+    # Participant sentence-level correlations
+    if df_eye_part is not None:
+        result_participant = comparator.compute_correlations(return_heatmap=False, participant_level=True)
+        participant_summary = result_participant["participant_level_summary"]
+        participant_plot_b64 = comparator.plot_participant_correlations(participant_summary)
+    else:
+        participant_summary = None
+        
+    # Mixed-effects modelling
+    result = comparator.mixed_effects_model(["num_nodes", "num_edges"], "FFD_avg")
+    print(result["model_summary"])
+
+    return {
+        "top_sentence_level_correlations": result_avg["correlations_sorted"][:10],
+        "sentence_level_corr_matrix": result_avg["corr_matrix"],
+        "participant_level_summary": participant_summary
     }

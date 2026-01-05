@@ -223,6 +223,96 @@ class UMRAnalyzer:
                 "coherence_trend": "More connected (LLM)" if avg_delta_reentrancy > 0 else "Less connected (LLM)" if avg_delta_reentrancy < 0 else "Similar coherence"
             }
         }
+        
+        
+    def analyze_sentences(self, umr_data) -> Dict[int, Any]:
+        """
+        Compute sentence-level UMR graph statistics for comparison with sentence-level eye-tracking measures.
+        """
+
+        logging.getLogger("penman").setLevel(logging.WARNING)
+        
+        sentence_umr_stats = {}
+
+        for item in umr_data:
+            sentence_id = item.get("sentence_id", "unknown")
+            penman_str = item.get("umr_graph", "")
+
+            pg = self.parse_penman(penman_str)
+            if not pg:
+                print(f"Failed to parse UMR graph for sentence {sentence_id}")
+                continue
+
+            G = self.to_networkx(pg)
+            root = pg.top
+
+            try:
+                depths = nx.shortest_path_length(G, source=root)
+                depth_values = list(depths.values())
+            except Exception:
+                depth_values = []
+
+            num_nodes = 0
+            num_predicates = 0
+            num_entities = 0
+            num_reentrancies = 0
+            degrees = []
+
+            num_coordination = 0
+            num_temporal_quantities = 0
+
+            for node in G.nodes():
+                data = G.nodes[node]
+
+                if data.get("type") != "instance":
+                    continue
+
+                num_nodes += 1
+                instance = data.get("instance") 
+                
+                if isinstance(instance, str):
+                    if instance.endswith(("-01", "-02", "-03", "-04")):
+                        num_predicates += 1
+                    else:
+                        num_entities += 1
+
+                in_deg = G.in_degree(node)
+                if in_deg > 1:
+                    num_reentrancies += 1
+
+                deg = G.degree(node)
+                degrees.append(deg)
+
+                if instance in {"and-01", "or-01"}:
+                    num_coordination += 1
+
+                if instance == "temporal-quantity":
+                    num_temporal_quantities += 1
+
+            num_edges = G.number_of_edges()
+
+            sentence_umr_stats[sentence_id] = {
+                "num_nodes": num_nodes,
+                "num_edges": num_edges,
+                "max_depth": max(depth_values) if depth_values else 0,
+                "avg_depth": sum(depth_values) / len(depth_values) if depth_values else 0.0,
+                "num_predicates": num_predicates,
+                "num_entities": num_entities,
+                "predicate_entity_ratio": (num_predicates / num_entities if num_entities > 0 else 0.0),
+                "num_reentrancies": num_reentrancies,
+                "avg_degree": (sum(degrees) / len(degrees) if degrees else 0.0),
+                "max_degree": max(degrees) if degrees else 0,
+                "num_coordination": num_coordination,
+                "num_temporal_quantities": num_temporal_quantities
+            }
+
+        # Limit to 2 decimal places
+        for sentence_id, stats in sentence_umr_stats.items():
+            for key, value in stats.items():
+                if isinstance(value, float):
+                    stats[key] = round(value, 2)
+                    
+        return sentence_umr_stats
 
 
 def create_umr_analyzer() -> UMRAnalyzer:

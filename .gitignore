@@ -1,7 +1,6 @@
 .env
 EmTeC/
 venv/
-data/
 __pycache__/
 *.pyc
 app/saved_outputs/

@@ -3,6 +3,7 @@ from typing import Dict, List, Optional, Any
 import networkx as nx
 import penman
 from penman.graph import Graph
+import smatch
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -39,37 +40,73 @@ class UMRAnalyzer:
 
         return G
 
-    def calculate_smatch(self, human_str: str, llm_str: str) -> Dict[str, float]:
+    def calculate_smatch(self, human_str: str, llm_str: str, use_official: bool = True) -> Dict[str, float]:
         try:
-            human_graph = self.parse_penman(human_str)
-            llm_graph = self.parse_penman(llm_str)
+            if not human_str or not human_str.strip() or not llm_str or not llm_str.strip():
+                return {"smatch_precision": 0.0, "smatch_recall": 0.0, "smatch_f1": 0.0, "method": "empty"}
 
-            if not human_graph or not llm_graph:
-                return {"smatch_precision": 0.0, "smatch_recall": 0.0, "smatch_f1": 0.0}
+            if use_official:
+                return self._calculate_smatch_official(human_str, llm_str)
+            else:
+                return self._calculate_smatch_simple(human_str, llm_str)
 
-            human_triples = self._extract_triples(human_graph)
-            llm_triples = self._extract_triples(llm_graph)
+        except Exception as e:
+            logger.error(f"Smatch calculation failed: {e}")
+            return {"smatch_precision": 0.0, "smatch_recall": 0.0, "smatch_f1": 0.0, "method": "error"}
 
-            if not human_triples and not llm_triples:
-                return {"smatch_precision": 1.0, "smatch_recall": 1.0, "smatch_f1": 1.0}
-            if not llm_triples:
-                return {"smatch_precision": 0.0, "smatch_recall": 0.0, "smatch_f1": 0.0}
-            if not human_triples:
-                return {"smatch_precision": 0.0, "smatch_recall": 0.0, "smatch_f1": 0.0}
+    def _calculate_smatch_official(self, human_str: str, llm_str: str) -> Dict[str, float]:
+        try:
+            best_match_num, test_triple_num, gold_triple_num = smatch.get_amr_match(
+                human_str, llm_str,
+                verbose=False,
+                max_iterations=5
+            )
 
-            matched = len(human_triples & llm_triples)
-            precision = matched / len(llm_triples) if llm_triples else 0.0
-            recall = matched / len(human_triples) if human_triples else 0.0
+            precision = best_match_num / test_triple_num if test_triple_num > 0 else 0.0
+            recall = best_match_num / gold_triple_num if gold_triple_num > 0 else 0.0
             f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0.0
 
             return {
                 "smatch_precision": round(precision, 3),
                 "smatch_recall": round(recall, 3),
-                "smatch_f1": round(f1, 3)
+                "smatch_f1": round(f1, 3),
+                "method": "official",
+                "matched_triples": int(best_match_num),
+                "test_triples": int(test_triple_num),
+                "gold_triples": int(gold_triple_num)
             }
         except Exception as e:
-            logger.error(f"Smatch calculation failed: {e}")
-            return {"smatch_precision": 0.0, "smatch_recall": 0.0, "smatch_f1": 0.0}
+            logger.warning(f"Official Smatch failed ({e}), falling back to simple method")
+            return self._calculate_smatch_simple(human_str, llm_str)
+
+    def _calculate_smatch_simple(self, human_str: str, llm_str: str) -> Dict[str, float]:
+        human_graph = self.parse_penman(human_str)
+        llm_graph = self.parse_penman(llm_str)
+
+        if not human_graph or not llm_graph:
+            return {"smatch_precision": 0.0, "smatch_recall": 0.0, "smatch_f1": 0.0, "method": "simple_failed"}
+
+        human_triples = self._extract_triples(human_graph)
+        llm_triples = self._extract_triples(llm_graph)
+
+        if not human_triples and not llm_triples:
+            return {"smatch_precision": 1.0, "smatch_recall": 1.0, "smatch_f1": 1.0, "method": "simple"}
+        if not llm_triples:
+            return {"smatch_precision": 0.0, "smatch_recall": 0.0, "smatch_f1": 0.0, "method": "simple"}
+        if not human_triples:
+            return {"smatch_precision": 0.0, "smatch_recall": 0.0, "smatch_f1": 0.0, "method": "simple"}
+
+        matched = len(human_triples & llm_triples)
+        precision = matched / len(llm_triples) if llm_triples else 0.0
+        recall = matched / len(human_triples) if human_triples else 0.0
+        f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0.0
+
+        return {
+            "smatch_precision": round(precision, 3),
+            "smatch_recall": round(recall, 3),
+            "smatch_f1": round(f1, 3),
+            "method": "simple_fallback"
+        }
 
     def _extract_triples(self, graph: Graph) -> set:
         triples = set()

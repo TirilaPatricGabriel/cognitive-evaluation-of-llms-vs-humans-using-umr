@@ -4,3 +4,22 @@ venv/
 __pycache__/
 *.pyc
 app/saved_outputs/
+*.log
+*.md
+__pycache__
+./claude
+test_complete_single.py
+test_direct.py
+test_endpoints.py
+test_single_text.py
+app/loaders/__pycache__/__init__.cpython-313.pyc
+# Python bytecode
+__pycache__/
+*.pyc
+
+# IDE/Tooling
+.claude/
+
+# Data and tests (optional, based on your untracked list)
+data/
+test_full_pipeline_multipleye.py

@@ -1,17 +1,51 @@
 prompt: |
-  You are a text analysis expert. Analyze the following text and extract its key characteristics.
+  You are analyzing a text to create a generation blueprint. Extract ALL details and structure so another LLM can recreate a semantically identical text.
 
-  Text:
+  ## ORIGINAL TEXT:
   {text}
 
-  Create a detailed prompt that would allow an AI to reproduce this EXACT text with the same:
-  - Subject matter and specific facts
-  - Narrative structure and flow
-  - Writing style and tone
-  - Level of detail
-  - Vocabulary and phrasing
-  - Text length (approximately {length} characters)
+  ## TARGET METRICS:
+  - Words: {word_count} (±20 max)
+  - Sentences: {sentence_count} (±2 max)
+  - Avg sentence: {avg_len} words
 
-  IMPORTANT: The prompt must be specific enough that the generated text covers the SAME topics and information as the original.
+  ## YOUR TASK:
 
-  Return ONLY the prompt text, without explanations.
+  Create a generation prompt with these sections:
+
+  ### 1. CONTENT CHECKLIST (List EVERY item that must appear):
+  - **People:** [Name all people with exact titles]
+  - **Organizations:** [Name all organizations with acronyms]
+  - **Places:** [All locations mentioned]
+  - **Dates/Times:** [All temporal references]
+  - **Numbers:** [All statistics, quantities, measurements]
+  - **Technical Terms:** [All specialized vocabulary]
+  - **Claims:** [All factual assertions made]
+
+  ### 2. DISCOURSE STRUCTURE (Divide text into 5-7 sections):
+  For each section:
+  - Section X: [Type] (~[word count] words, sentences [range])
+  - Must include: [bullet list of specific content]
+  - Function: [one sentence purpose]
+
+  ### 3. GENERATION INSTRUCTIONS
+
+  Output exactly this template:
+
+  ---
+  Write {word_count}-word Romanian text with {sentence_count} sentences.
+
+  **CONTENT CHECKLIST** (all items mandatory):
+  [Paste your checklist from section 1]
+
+  **STRUCTURE** (follow this order):
+  [Paste your sections from section 2]
+
+  **RULES:**
+  - Match word count: {word_count} ±20 words
+  - Match sentence count: {sentence_count} ±2 sentences
+  - Follow section order exactly
+  - Use simple, direct sentences
+  - No elaboration beyond requirements
+  - Include all checklist items
+  ---

@@ -1,2 +1,13 @@
 prompt: |
+  You are a precision text generator. Follow instructions exactly. Do not add, omit, or reorder content.
+
   {prompt}
+
+  ## CRITICAL RULES:
+  1. Count words as you write. Stop at target ±20 words.
+  2. Use simple, direct sentences.
+  3. Follow the section order given.
+  4. Include every checklist item.
+  5. Do not add adjectives/adverbs not in requirements.
+
+  Write the Romanian text now:

@@ -1,39 +1,76 @@
-import google.generativeai as genai
+import time
+import logging
+from google import genai
+from google.genai import types
+import google.generativeai as genai_legacy
 from app.core.config import get_settings
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 settings = get_settings()
-genai.configure(api_key=settings.GEMINI_API_KEY)
+
+client_v3 = genai.Client(api_key=settings.GEMINI_API_KEY)
+genai_legacy.configure(api_key=settings.GEMINI_API_KEY)
 
 
-def call_gemini(prompt: str, model_name: str = None) -> str:
+def is_gemini_3_model(model_name: str) -> bool:
+    return model_name.startswith("gemini-3")
+
+
+def call_gemini(prompt: str, model_name: str = None, thinking_level: str = "HIGH", max_retries: int = 3) -> str:
     if model_name is None:
         model_name = settings.MODEL
 
-    model = genai.GenerativeModel(model_name)
-    response = model.generate_content(prompt)
-
-    # Handle safety blocks and other response issues
-    try:
-        return response.text
-    except ValueError as e:
-        # Check if blocked by safety filters
-        if hasattr(response, 'candidates') and response.candidates:
-            candidate = response.candidates[0]
-            finish_reason = candidate.finish_reason
-
-            # finish_reason: 1=SAFETY, 2=MAX_TOKENS, 3=RECITATION, 4=OTHER
-            if finish_reason == 1:
-                error_msg = "[SAFETY_BLOCKED] Content generation blocked by safety filters"
-            elif finish_reason == 2:
-                error_msg = "[MAX_TOKENS] Response exceeded maximum token length"
-            elif finish_reason == 3:
-                error_msg = "[RECITATION] Content blocked due to recitation concerns"
+    for attempt in range(max_retries):
+        try:
+            if is_gemini_3_model(model_name):
+                logger.info(f"Using Gemini 3 model: {model_name} with thinking_level={thinking_level}")
+                response = client_v3.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        thinking_config=types.ThinkingConfig(
+                            thinking_level=thinking_level
+                        )
+                    )
+                )
+                return response.text
             else:
-                error_msg = f"[ERROR] Generation failed with finish_reason={finish_reason}"
+                logger.info(f"Using legacy Gemini model: {model_name}")
+                model = genai_legacy.GenerativeModel(model_name)
+                response = model.generate_content(prompt)
+                return response.text
 
-            # Log the issue but return a placeholder so pipeline continues
-            print(f"WARNING: {error_msg}")
-            return error_msg
-        else:
-            # Unknown error, re-raise
-            raise
+        except ValueError as e:
+            error_msg = f"[ERROR] Generation failed: {str(e)}"
+            logger.warning(f"Attempt {attempt + 1}/{max_retries}: {error_msg}")
+
+            if attempt < max_retries - 1:
+                wait_time = 2 ** attempt
+                logger.info(f"Retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
+            else:
+                return error_msg
+
+        except Exception as e:
+            error_type = type(e).__name__
+            error_msg = str(e)
+
+            if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg or "quota" in error_msg.lower():
+                logger.warning(f"Attempt {attempt + 1}/{max_retries}: Rate limit hit")
+                if attempt < max_retries - 1:
+                    wait_time = 60
+                    logger.info(f"Waiting {wait_time} seconds for rate limit...")
+                    time.sleep(wait_time)
+                else:
+                    return f"[RATE_LIMIT] {error_msg}"
+            else:
+                logger.error(f"Attempt {attempt + 1}/{max_retries}: {error_type}: {error_msg}")
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt
+                    time.sleep(wait_time)
+                else:
+                    return f"[ERROR] {error_type}: {error_msg}"
+
+    return "[ERROR] All retry attempts failed"

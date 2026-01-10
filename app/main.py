@@ -9,7 +9,28 @@ from pathlib import Path
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
 app = FastAPI()
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    import traceback
+    print(f"Global exception: {exc}")
+    traceback.print_exc()
+    return JSONResponse(
+        status_code=500,
+        content={"message": str(exc), "traceback": traceback.format_exc()},
+    )
+
+@app.get("/")
+def root():
+    return {"status": "ok", "message": "UMR Cognitive Evaluation API"}
+
+@app.post("/healthcheck")
+def healthcheck():
+    return {"message": "healthy"}
 
 
 @app.get("/load-data/{dataset_name}")
@@ -38,28 +59,53 @@ def load_data(dataset_name: str):
 
 
 @app.post("/reverse-engineer")
-def reverse_engineer():
+def reverse_engineer(limit: int = None):
     print("Starting reverse engineering")
     df_ro, df_en = load_multipleye_data()
+
+    if limit:
+        print(f"Limiting to {limit} texts per language")
+        df_ro = df_ro.head(limit)
+        df_en = df_en.head(limit)
 
     prompt_template = load_prompt("app/prompts/reverse_engineer.yaml")
 
     tasks = []
     for _, row in df_ro.iterrows():
+        text = row['text']
+        word_count = len(text.split())
+        sentence_count = len([s for s in text.split('.') if s.strip()])
+        avg_len = round(word_count / sentence_count, 1) if sentence_count > 0 else 0
+        
         tasks.append({
             "language": "romanian",
             "subcategory": row['subcategory'],
             "filename": row['filename'],
-            "original_text": row['text'],
-            "prompt": prompt_template.format(text=row['text'])
+            "original_text": text,
+            "prompt": prompt_template.format(
+                text=text,
+                word_count=word_count,
+                sentence_count=sentence_count,
+                avg_len=avg_len
+            )
         })
 
     for _, row in df_en.iterrows():
+        text = row.get('text', '')
+        word_count = len(text.split())
+        sentence_count = len([s for s in text.split('.') if s.strip()])
+        avg_len = round(word_count / sentence_count, 1) if sentence_count > 0 else 0
+
         tasks.append({
             "language": "english",
             "subcategory": row['subcategory'],
-            "original_text": row.get('text', ''),
-            "prompt": prompt_template.format(text=row['text'])
+            "original_text": text,
+            "prompt": prompt_template.format(
+                text=text,
+                word_count=word_count,
+                sentence_count=sentence_count,
+                avg_len=avg_len
+            )
         })
 
     print(f"Processing {len(tasks)} texts concurrently")
@@ -155,7 +201,7 @@ def generate_texts(input_file: str = None):
 
 
 @app.post("/full-pipeline")
-def full_pipeline():
+def full_pipeline(limit: int = None):
     """
     Complete pipeline: reverse engineer -> generate texts -> create UMR graphs -> visualize.
     """
@@ -165,26 +211,54 @@ def full_pipeline():
 
     df_ro, df_en = load_multipleye_data()
 
+    if limit:
+        print(f"Limiting to {limit} texts per language")
+        df_ro = df_ro.head(limit)
+        df_en = df_en.head(limit)
+
     reverse_template = load_prompt("app/prompts/reverse_engineer.yaml")
     generate_template = load_prompt("app/prompts/generate_text.yaml")
 
     tasks = []
+    print("Processing Romanian texts...")
     for _, row in df_ro.iterrows():
+        text = row['text']
+        word_count = len(text.split())
+        sentence_count = len([s for s in text.split('.') if s.strip()])
+        avg_len = round(word_count / sentence_count, 1) if sentence_count > 0 else 0
+        
         tasks.append({
             "language": "romanian",
             "subcategory": row['subcategory'],
             "filename": row['filename'],
-            "original_text": row['text'],
-            "prompt": reverse_template.format(text=row['text'], length=len(row['text']))
+            "original_text": text,
+            "prompt": reverse_template.format(
+                text=text, 
+                word_count=word_count,
+                sentence_count=sentence_count,
+                avg_len=avg_len
+            )
         })
 
+    print("Processing English texts...")
     for _, row in df_en.iterrows():
+        text = row.get('text', '')
+        word_count = len(text.split())
+        sentence_count = len([s for s in text.split('.') if s.strip()])
+        avg_len = round(word_count / sentence_count, 1) if sentence_count > 0 else 0
+        
         tasks.append({
             "language": "english",
             "subcategory": row['subcategory'],
-            "original_text": row.get('text', ''),
-            "prompt": reverse_template.format(text=row['text'], length=len(row['text']))
+            "original_text": text,
+            "prompt": reverse_template.format(
+                text=text, 
+                word_count=word_count,
+                sentence_count=sentence_count,
+                avg_len=avg_len
+            )
         })
+
 
     print(f"\nSTEP 1/5: Reverse engineering {len(tasks)} human texts")
     print("-" * 80)

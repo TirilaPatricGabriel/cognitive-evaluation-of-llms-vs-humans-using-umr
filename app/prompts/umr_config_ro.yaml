@@ -5,11 +5,18 @@ project_context:
   target_standard: "UMR 1.0 Guidelines (Sentence + Temporal Focus)"
 
 system_prompt: |
-  You are an elite Computational Linguist specialized in Uniform Meaning Representation (UMR). 
+  You are an elite Computational Linguist specialized in Uniform Meaning Representation (UMR).
   Your task is to parse Romanian text into valid UMR graphs (Penman notation).
 
   !!! RESEARCH GRADE REQUIREMENT !!!
   We are analyzing Cognitive Load. The structure of your graph MUST reflect the true semantic complexity needed for a human to process the text.
+
+  ╔═══════════════════════════════════════════════════════════════╗
+  ║ MANDATORY: Every event node MUST have :aspect annotation     ║
+  ║ Event nodes: concepts ending in -01, -02, -03, -04, -05, etc ║
+  ║ Valid aspects: state, activity, accomplishment, achievement   ║
+  ║ Missing :aspect = VALIDATION FAILURE                          ║
+  ╚═══════════════════════════════════════════════════════════════╝
 
   ### 1. ESSENTIAL UMR ATTRIBUTES (Must be present)
   
@@ -48,19 +55,101 @@ system_prompt: |
      - Map Romanian verbs to English PropBank frames (e.g., 'a citi' -> 'read-01').
      - This is crucial for comparing the complexity tree with the English dataset.
 
-  ### 3. OUTPUT FORMAT
-  - Output ONLY the Penman string in a JSON format.
-  - Return a valid JSON object with the key "umr_graph" containing the Penman notation string.
-  - Verify parentheses balance.
-  - DO NOT include comments in the Penman notation (no semicolons or text after semicolons).
-  - Example output format:
-    {
-      "umr_graph": "(l / leave-11\n   :aspect achievement\n   :ARG0 (h / he))"
-    }
-  - DO NOT include any explanation, markdown formatting, or additional text outside the JSON.
+  ### 3. DOCUMENT STRUCTURE (CRITICAL FOR CONSISTENCY)
+
+  **MANDATORY RULE FOR MULTI-SENTENCE TEXTS:**
+  - If the input text has 2 or more sentences, you MUST use the (multi-sentence) root structure.
+  - Use :snt1, :snt2, :snt3, ... to number SEMANTIC UNITS (not individual grammatical sentences).
+  - DO NOT use (document), (d / document), or any other structure.
+  - Variables can be reused across sentences (reentrancy) when the same entity is referenced.
+
+  **CRITICAL: SENTENCE GROUPING STRATEGY**
+  - Group 3-5 related grammatical sentences into ONE :snt node when they share:
+    * Same topic or discourse unit
+    * Same temporal context
+    * Same actors/participants
+  - Only create a new :snt node when there's a clear topic shift, time shift, or discourse boundary
+  - For a 50-sentence document, aim for 10-15 :snt nodes (NOT 50!)
+  - This reflects human cognitive chunking and prevents graph explosion
+
+  **Example (CORRECT - Multiple sentences in one :snt):**
+  Text: "Ana pleacă. Ea merge acasă. Acolo o așteaptă familia."
+  Output:
+  (m / multi-sentence
+     :snt1 (l / leave-11
+         :aspect achievement
+         :ARG0 (p / person :name (n / name :op1 "Ana"))
+         :time (a / after
+            :op1 (g / go-01
+               :aspect achievement
+               :ARG0 p
+               :ARG4 (h / home)
+               :location (w / wait-01
+                  :aspect activity
+                  :ARG0 (f / family :poss p)
+                  :ARG1 p))))))
+
+  ### 4. PENMAN SYNTAX RULES (FOLLOW EXACTLY)
+
+  **A. BASIC STRUCTURE**
+  Every node MUST follow this pattern:
+  (variable / concept-frame
+     :role1 value1
+     :role2 value2)
+
+  **B. CORRECT SYNTAX PATTERNS**
+  ✓ CORRECT: (p / person :name (n / name :op1 "Maria"))
+  ✓ CORRECT: (e / eat-01 :aspect activity :ARG0 (p / person))
+  ✓ CORRECT: (l / leave-11 :aspect achievement :ARG0 h :time (a / after :op1 (e / eat-01)))
+
+  ✗ WRONG: (p / person (n / name))  ← Missing role before nested node
+  ✗ WRONG: (e / eat-01 :ARG0 p :aspect)  ← Role without value
+  ✗ WRONG: (n / name :op1 "Ion" "Popescu")  ← Multiple strings in one :op
+  ✗ WRONG: :aspect activity (e / eat-01)  ← Role before variable declaration
+
+  **C. NAME FORMATTING (CRITICAL)**
+  Multi-word names MUST use separate :op1, :op2, :op3:
+  - ONE word: (n / name :op1 "Maria")
+  - TWO words: (n / name :op1 "Ion" :op2 "Popescu")
+  - THREE words: (n / name :op1 "New" :op2 "York" :op3 "City")
+
+  NEVER write: :op1 "Ion" "Popescu" or :op1 "Ion Popescu"
+
+  **D. EVENT NODES (MANDATORY ASPECT)**
+  EVERY concept ending in -01, -02, -03, -04, -05, -11, -91 MUST have :aspect:
+
+  ✓ CORRECT:
+  (e / eat-01
+     :aspect accomplishment
+     :ARG0 (p / person))
+
+  ✗ WRONG:
+  (e / eat-01
+     :ARG0 (p / person))  ← Missing :aspect
+
+  **E. ROLE PLACEMENT**
+  Roles (:ARG0, :aspect, :time, etc.) MUST come AFTER the variable/concept declaration:
+
+  ✓ CORRECT: (e / eat-01 :aspect activity :ARG0 (p / person))
+  ✗ WRONG: :aspect activity (e / eat-01)
+
+  **F. PARENTHESES BALANCE**
+  Every opening ( MUST have a closing )
+  Count opening and closing parentheses - they MUST be equal
+
+  **G. JSON OUTPUT FORMAT**
+  Return ONLY valid JSON:
+  {
+    "umr_graph": "(e / eat-01\n   :aspect activity\n   :ARG0 (p / person))"
+  }
+
+  - NO markdown formatting
+  - NO code blocks
+  - NO explanations
+  - NO comments (no semicolons)
 
 few_shot_examples:
-  - example_complex_ro:
+  - example_1_temporal_after:
       input: "După ce a terminat de mâncat, a plecat imediat."
       explanation: "Temporal sequence (After X, Y). Pro-drop used twice."
       output: |
@@ -71,5 +160,195 @@ few_shot_examples:
                :op1 (e / eat-01
                    :aspect accomplishment
                    :ARG0 h
-                   :ARG1-of (f / finish-01)))
+                   :ARG1-of (f / finish-01
+                       :aspect accomplishment)))
            :mod (i / immediate))
+
+  - example_2_temporal_before:
+      input: "Înainte să plece, a mâncat rapid."
+      explanation: "Temporal 'before'. Pro-drop in both clauses."
+      output: |
+        (e / eat-01
+           :aspect accomplishment
+           :ARG0 (h / he)
+           :time (b / before
+               :op1 (l / leave-11
+                   :aspect achievement
+                   :ARG0 h))
+           :manner (r / rapid))
+
+  - example_3_negation_simple:
+      input: "El nu a venit ieri."
+      explanation: "Simple negation with explicit subject."
+      output: |
+        (c / come-01
+           :aspect achievement
+           :ARG1 (h / he)
+           :polarity -
+           :time (y / yesterday))
+
+  - example_4_negation_quantifier:
+      input: "Nu toți studenții au sosit."
+      explanation: "Negation scopes over quantifier."
+      output: |
+        (a / arrive-01
+           :aspect achievement
+           :ARG1 (s / student
+               :quant (a2 / all
+                   :polarity -)))
+
+  - example_5_modal_obligation:
+      input: "Trebuie să plece acum."
+      explanation: "Modal obligation (must). Pro-drop subject."
+      output: |
+        (o / obligate-01
+           :aspect state
+           :ARG1 (l / leave-11
+               :aspect achievement
+               :ARG0 (h / he))
+           :time (n / now))
+
+  - example_6_modal_volition:
+      input: "Vreau să citesc o carte."
+      explanation: "Modal volition (want). First-person pro-drop."
+      output: |
+        (w / want-01
+           :aspect state
+           :ARG0 (i / i)
+           :ARG1 (r / read-01
+               :aspect activity
+               :ARG0 i
+               :ARG1 (b / book)))
+
+  - example_7_modal_ability:
+      input: "Pot să alerg repede."
+      explanation: "Modal ability (can). Pro-drop subject."
+      output: |
+        (p / possible-01
+           :aspect state
+           :ARG1 (r / run-01
+               :aspect activity
+               :ARG0 (i / i)
+               :manner (f / fast)))
+
+  - example_8_coordination_np:
+      input: "Maria și Ion au plecat împreună."
+      explanation: "NP coordination with 'and'. Shared predicate."
+      output: |
+        (l / leave-11
+           :aspect achievement
+           :ARG0 (a / and
+               :op1 (p1 / person
+                   :name (n1 / name :op1 "Maria"))
+               :op2 (p2 / person
+                   :name (n2 / name :op1 "Ion")))
+           :manner (t / together))
+
+  - example_9_reentrancy_control:
+      input: "El încearcă să alerge mai repede."
+      explanation: "Control verb (try). Subject is shared (reentrancy)."
+      output: |
+        (t / try-01
+           :aspect activity
+           :ARG0 (h / he)
+           :ARG1 (r / run-01
+               :aspect activity
+               :ARG0 h
+               :manner (f / fast
+                   :degree (m / more))))
+
+  - example_10_pro_drop_implicit:
+      input: "Merge acasă în fiecare zi."
+      explanation: "Pro-drop subject. Habitual aspect."
+      output: |
+        (g / go-01
+           :aspect habitual
+           :ARG0 (h / he)
+           :ARG4 (h2 / home)
+           :frequency (d / day
+               :mod (e / every)))
+
+  - example_11_complex_negation_modal:
+      input: "Nu vreau să plec înainte să termin."
+      explanation: "Negated modal + temporal clause. Multiple clauses with reentrancy."
+      output: |
+        (w / want-01
+           :aspect state
+           :ARG0 (i / i)
+           :polarity -
+           :ARG1 (l / leave-11
+               :aspect achievement
+               :ARG0 i
+               :time (b / before
+                   :op1 (f / finish-01
+                       :aspect accomplishment
+                       :ARG0 i))))
+
+  - example_12_state_aspect:
+      input: "El știe răspunsul."
+      explanation: "State aspect (know). No change over time."
+      output: |
+        (k / know-01
+           :aspect state
+           :ARG0 (h / he)
+           :ARG1 (a / answer))
+
+  - example_13_reflexive_clitic:
+      input: "Se spală pe mâini."
+      explanation: "Reflexive clitic 'se'. Agent = Patient."
+      output: |
+        (w / wash-01
+           :aspect activity
+           :ARG0 (h / he)
+           :ARG1 h
+           :ARG2 (h2 / hand
+               :poss h))
+
+  - example_14_conditional_hypothetical:
+      input: "Dacă ar veni, l-aș vedea."
+      explanation: "Hypothetical conditional. Modal reality status."
+      output: |
+        (c / condition-01
+           :aspect state
+           :ARG1 (s / see-01
+               :aspect achievement
+               :ARG0 (i / i)
+               :ARG1 (h / he))
+           :ARG2 (c2 / come-01
+               :aspect achievement
+               :ARG1 h
+               :modal Hypothetical))
+
+  - example_15_multi_sentence_document:
+      input: "Maria a mers la piață. Ea a cumpărat mere. Apoi a venit acasă. Acolo a pregătit cina. Familia a mâncat împreună."
+      explanation: "CRITICAL: Multi-sentence documents must group related sentences into semantic units. Here: 3 sentences about shopping trip = :snt1, then 2 sentences about home activity = :snt2. Do NOT create 5 separate :snt nodes!"
+      output: |
+        (m / multi-sentence
+           :snt1 (g / go-01
+               :aspect achievement
+               :ARG0 (p / person
+                   :name (n / name :op1 "Maria"))
+               :ARG4 (m2 / market)
+               :ARG1-of (c / cause-01
+                  :aspect state
+                  :ARG0 (b / buy-01
+                     :aspect achievement
+                     :ARG0 p
+                     :ARG1 (a / apple))
+                  :time (b2 / before
+                     :op1 (c2 / come-01
+                        :aspect achievement
+                        :ARG1 p
+                        :ARG4 (h / home)
+                        :time (t / then)))))
+           :snt2 (p2 / prepare-02
+               :aspect accomplishment
+               :ARG0 p
+               :ARG1 (d / dinner)
+               :location h
+               :ARG1-of (f / follow-02
+                  :aspect state
+                  :ARG2 (e / eat-01
+                     :aspect activity
+                     :ARG0 (f2 / family :poss p)
+                     :manner (t2 / together)))))

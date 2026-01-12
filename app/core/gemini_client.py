@@ -18,28 +18,32 @@ def is_gemini_3_model(model_name: str) -> bool:
     return model_name.startswith("gemini-3")
 
 
-def call_gemini(prompt: str, model_name: str = None, thinking_level: str = "HIGH", max_retries: int = 3) -> str:
+def call_gemini(prompt: str, model_name: str = None, thinking_level: str = "HIGH", temperature: float = None, max_retries: int = 3) -> str:
     if model_name is None:
         model_name = settings.MODEL
 
     for attempt in range(max_retries):
         try:
             if is_gemini_3_model(model_name):
-                logger.info(f"Using Gemini 3 model: {model_name} with thinking_level={thinking_level}")
+                logger.info(f"Using Gemini 3 model: {model_name} with thinking_level={thinking_level}, temperature={temperature}")
+                config_params = {
+                    "thinking_config": types.ThinkingConfig(thinking_level=thinking_level)
+                }
+                if temperature is not None:
+                    config_params["temperature"] = temperature
                 response = client_v3.models.generate_content(
                     model=model_name,
                     contents=prompt,
-                    config=types.GenerateContentConfig(
-                        thinking_config=types.ThinkingConfig(
-                            thinking_level=thinking_level
-                        )
-                    )
+                    config=types.GenerateContentConfig(**config_params)
                 )
                 return response.text
             else:
-                logger.info(f"Using legacy Gemini model: {model_name}")
+                logger.info(f"Using legacy Gemini model: {model_name}, temperature={temperature}")
+                generation_config = {}
+                if temperature is not None:
+                    generation_config["temperature"] = temperature
                 model = genai_legacy.GenerativeModel(model_name)
-                response = model.generate_content(prompt)
+                response = model.generate_content(prompt, generation_config=generation_config if generation_config else None)
                 return response.text
 
         except ValueError as e:

@@ -64,6 +64,13 @@ system_prompt: |
   - For a 50-sentence document, aim for 10-15 :snt nodes (NOT 50!)
   - This reflects human cognitive chunking and prevents graph explosion
 
+  **COMPLEXITY CALIBRATION RULE:**
+  - Expected concept count ≈ word count (1 concept per word as guideline)
+  - For 100-word text: aim for 80-120 concepts
+  - For 500-word text: aim for 400-600 concepts
+  - DO NOT over-segment events or create unnecessary intermediate nodes
+  - DO NOT create redundant person/entity nodes if they can be reused via reentrancy
+
   **Example (CORRECT - Multiple sentences in one :snt):**
   Text: "Mary left. She went home. There her family was waiting."
   Output:

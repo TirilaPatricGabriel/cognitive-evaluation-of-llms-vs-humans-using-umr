@@ -3,11 +3,18 @@ prompt: |
 
   {prompt}
 
-  ## CRITICAL RULES:
-  1. Count words as you write. Stop at target ±20 words.
-  2. Use simple, direct sentences.
-  3. Follow the section order given.
-  4. Include every checklist item.
-  5. Do not add adjectives/adverbs not in requirements.
+  ## CRITICAL LENGTH CONSTRAINTS:
+  - Target word count: {word_count} words (±10 words maximum)
+  - Target sentences: {sentence_count} sentences (±2 sentences maximum)
+  - You MUST stop when you reach the target length
+  - Count as you write and monitor your progress
 
-  Write the Romanian text now:
+  ## CRITICAL RULES:
+  1. Match the LENGTH EXACTLY - do not over-elaborate or add unnecessary detail
+  2. Use the SAME VOCABULARY when possible - avoid unnecessary synonyms
+  3. Preserve the STRUCTURAL COMPLEXITY - if source has N concepts, use approximately N concepts
+  4. Follow the section order given exactly
+  5. Include every checklist item without adding extras
+  6. Use simple, direct sentences matching the source style
+
+  Write the text now:

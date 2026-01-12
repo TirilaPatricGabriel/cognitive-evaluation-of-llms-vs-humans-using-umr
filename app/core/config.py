@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: str = Field(..., description="Google API Key")
 
     MODEL: str = Field("gemini-3-flash-preview", description="Gemini 3 Flash for complex reasoning")
-    UMR_THINKING_LEVEL: str = Field("HIGH", description="Thinking level for UMR parsing: MINIMAL, LOW, MEDIUM, HIGH")
+    UMR_THINKING_LEVEL: str = Field("LOW", description="Thinking level for UMR parsing: MINIMAL, LOW, MEDIUM, HIGH")
 
     model_config = SettingsConfigDict(
         env_file='.env',

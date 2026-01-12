@@ -168,7 +168,7 @@ class UMRParser:
         for attempt in range(max_retries):
             try:
                 # Call LLM
-                response = call_gemini(prompt, thinking_level=thinking_level)
+                response = call_gemini(prompt, thinking_level=thinking_level, temperature=0.3)
 
                 # Check for API errors
                 if response.startswith("[") and ("ERROR" in response or "SAFETY" in response or "RATE_LIMIT" in response):

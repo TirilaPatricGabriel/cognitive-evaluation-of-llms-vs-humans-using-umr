@@ -19,18 +19,37 @@ class UMRValidator:
 
     CORE_ROLES = {':ARG0', ':ARG1', ':ARG2', ':ARG3', ':ARG4', ':ARG5'}
 
-    NON_CORE_ROLES = {':time', ':location', ':manner', ':topic', ':medium', ':purpose',
-                     ':cause', ':consist-of', ':part-of', ':poss', ':mod', ':polarity',
-                     ':aspect', ':quant', ':degree', ':domain', ':op1', ':op2', ':op3',
-                     ':op4', ':op5', ':op6', ':name', ':condition', ':concession', ':temporal', ':modal',
-                     ':same-entity', ':scope', ':ARG0-of', ':ARG1-of', ':ARG2-of', ':ARG3-of', ':ARG4-of',
-                     ':snt1', ':snt2', ':snt3', ':snt4', ':snt5', ':snt6', ':snt7', ':snt8', ':snt9', ':snt10',
-                     ':snt11', ':snt12', ':snt13', ':snt14', ':snt15', ':snt16', ':snt17', ':snt18', ':snt19', ':snt20',
-                     ':source', ':destination', ':path', ':frequency', ':duration', ':extent', ':value',
-                     ':instrument', ':beneficiary', ':accompanier', ':direction', ':subevent'}
+    UMR_PARTICIPANT_ROLES = {
+        ':actor', ':companion', ':instrument', ':force', ':causer', ':cause',
+        ':undergoer', ':theme', ':recipient', ':experiencer', ':stimulus', ':material',
+        ':goal', ':start', ':source', ':affectee', ':place', ':manner', ':purpose',
+        ':reason', ':temporal', ':extent', ':other-role',
+        ':Actor-of', ':Undergoer-of', ':Stimulus-of', ':Theme-of', ':Experiencer-of',
+        ':ARG0-of', ':ARG1-of', ':ARG2-of', ':ARG3-of', ':ARG4-of', ':ARG5-of'
+    }
+
+    UMR_NON_PARTICIPANT_ROLES = {
+        ':calendar', ':century', ':day', ':dayperiod', ':decade', ':era', ':month',
+        ':quarter', ':season', ':time', ':timezone', ':weekday', ':year', ':year2',
+        ':mod', ':poss', ':part', ':part-of', ':age', ':group', ':topic', ':medium',
+        ':direction', ':path', ':duration', ':frequency', ':location',
+        ':name', ':wiki', ':op1', ':op2', ':op3', ':op4', ':op5', ':op6', ':op7', ':op8', ':op9', ':op10',
+        ':ord', ':quant', ':range', ':scale', ':unit', ':value',
+        ':example', ':polite', ':li', ':condition', ':concession',
+        ':aspect', ':mode', ':modstr', ':modpred', ':quot', ':polarity', ':degree',
+        ':ref-person', ':ref-number',
+        ':same-entity', ':same-event', ':subset-of', ':modal', ':scope',
+        ':destination', ':beneficiary', ':accompanier', ':subevent'
+    }
+
+    SENTENCE_LEVEL_ROLES = {
+        ':snt1', ':snt2', ':snt3', ':snt4', ':snt5', ':snt6', ':snt7', ':snt8', ':snt9', ':snt10',
+        ':snt11', ':snt12', ':snt13', ':snt14', ':snt15', ':snt16', ':snt17', ':snt18', ':snt19', ':snt20'
+    }
 
     def __init__(self):
-        self.valid_roles = self.CORE_ROLES | self.NON_CORE_ROLES
+        self.valid_roles = (self.CORE_ROLES | self.UMR_PARTICIPANT_ROLES |
+                           self.UMR_NON_PARTICIPANT_ROLES | self.SENTENCE_LEVEL_ROLES)
 
     def validate_graph(self, penman_str: str) -> Dict[str, Any]:
         if not penman_str or not penman_str.strip():

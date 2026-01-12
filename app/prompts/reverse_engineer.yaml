@@ -5,9 +5,10 @@ prompt: |
   {text}
 
   ## TARGET METRICS:
-  - Words: {word_count} (±20 max)
+  - Words: {word_count} (±10% max)
   - Sentences: {sentence_count} (±2 max)
   - Avg sentence: {avg_len} words
+  - Expected UMR complexity: ~{word_count} concepts (approximately 1 concept per word)
 
   ## YOUR TASK:
 
@@ -42,10 +43,11 @@ prompt: |
   [Paste your sections from section 2]
 
   **RULES:**
-  - Match word count: {word_count} ±20 words
+  - Match word count: {word_count} ±10% (strict limit)
   - Match sentence count: {sentence_count} ±2 sentences
   - Follow section order exactly
-  - Use simple, direct sentences
-  - No elaboration beyond requirements
-  - Include all checklist items
+  - Use simple, direct sentences matching source style
+  - No elaboration beyond requirements - preserve source vocabulary
+  - Include all checklist items exactly as given
+  - Target similar UMR complexity (~{word_count} concepts)
   ---

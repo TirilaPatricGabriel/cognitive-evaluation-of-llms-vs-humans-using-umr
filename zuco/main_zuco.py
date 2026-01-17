@@ -12,3 +12,6 @@ if __name__ == "__main__":
     
     create_participants_sentence_level_file(zuco_eye_file, "zuco2_participants_sentence_level.csv")
     
+    create_participants_word_level_file(zuco_eye_file, "zuco2_participants_word_level.csv")
+    
+    create_average_word_level_file(zuco_eye_file, "zuco2_average_word_level.csv")

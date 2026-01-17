@@ -1091,77 +1091,93 @@ def analyze_umr_semantics(input_file: str = None):
         "saved_to": str(output_file)
     }
     
-    
-@app.post("/compare-umr-with-eye-tracking")
-def compare_umr_with_eye_tracking(umr_input_file: str = None, eye_tracking_avg_sentence_file: str = None, eye_tracking_part_sentence_file: str = None):
-    print("Starting comparison of UMR graphs with eye-tracking data")
 
+@app.post("/compare-umr-with-eye-tracking")
+def compare_umr_with_eye_tracking(umr_input_file: str = None, eye_tracking_avg_sentence_file: str = None, eye_tracking_part_sentence_file: str = None, eye_tracking_avg_word_file: str = None, eye_tracking_part_word_file: str = None):
     # Load UMR graphs
     if not umr_input_file:
         umr_dir = Path("app/saved_outputs/umr_graphs")
-        if not umr_dir.exists():
-            return {"error": "No UMR graphs directory found. Generate graphs first."}
-
-        umr_files = sorted(umr_dir.glob("umr_graphs_*.json"))
+        umr_files = sorted(umr_dir.glob("umr_graphs_*.json")) if umr_dir.exists() else []
         if not umr_files:
-            return {"error": "No UMR graph files found. Generate graphs first."}
+            return {"error": "No UMR graphs found."}
         umr_input_file = str(umr_files[-1])
 
-    print(f"Loading UMR graphs from: {umr_input_file}")
-    with open(umr_input_file, 'r', encoding='utf-8') as f:
+    with open(umr_input_file, "r", encoding="utf-8") as f:
         umr_data = json.load(f)
-        
     umr_graphs = umr_data.get("zuco2_graphs", [])
-        
-    # Get UMR sentence-level stats
+
+    # Sentence-level UMR stats
     umr_analyzer = create_umr_analyzer()
     sentence_umr_stats = umr_analyzer.analyze_sentences(umr_graphs)
-    print(f"Analyzed UMR statistics for {len(sentence_umr_stats)} sentences")
-    
-    # Convert UMR stats to DataFrame
-    df_umr = pd.DataFrame.from_dict(sentence_umr_stats, orient="index")
-    df_umr.index.name = "sentence_id"
-    df_umr = df_umr.reset_index()
-    
-    # Load sentence-level average eye-tracking data
-    if not eye_tracking_avg_sentence_file:
-        eye_tracking_avg_sentence_file = "app/data/zuco2_average_sentence_level.csv"
+    df_umr_sent = pd.DataFrame.from_dict(sentence_umr_stats, orient="index").reset_index().rename(columns={"index": "sentence_id"})
 
-    if not Path(eye_tracking_avg_sentence_file).exists():
-        return {"error": "Average sentence-level eye-tracking file not found."}
-    
-    df_eye_avg = pd.read_csv(eye_tracking_avg_sentence_file)
-    
-    # Load sentence-level participant eye-tracking data
-    if not eye_tracking_part_sentence_file:
-        eye_tracking_part_sentence_file = "app/data/zuco2_participants_sentence_level.csv"
+    # Sentence-level eye-tracking
+    df_eye_avg_sent = pd.read_csv(eye_tracking_avg_sentence_file or "app/data/zuco2_average_sentence_level.csv")
+    df_eye_part_sent = pd.read_csv(eye_tracking_part_sentence_file or "app/data/zuco2_participants_sentence_level.csv")
+
+    # Word-level UMR stats
+    df_umr_node = umr_analyzer.analyze_nodes(umr_graphs)
+    df_eye_avg_word = pd.read_csv(eye_tracking_avg_word_file or "app/data/zuco2_average_word_level.csv")
+    df_eye_part_word = pd.read_csv(eye_tracking_part_word_file or "app/data/zuco2_participants_word_level.csv")
+
+    # Initialize comparator
+    comparator = UMREyeTrackingComparator(
+        df_umr_sent=df_umr_sent,
+        df_eye_sent_avg=df_eye_avg_sent,
+        df_eye_sent_participants=df_eye_part_sent,
+        df_umr_node=df_umr_node,
+        df_eye_word_avg=df_eye_avg_word,
+        df_eye_word_participants=df_eye_part_word
+    )
+
+    # Merge word-level data
+    df_part_word_merged, df_avg_word_merged = comparator.merge_word_level_data()
+    df_part_word_merged.to_csv("results/zuco2_participant_word_level_umr_eye_features.csv", index=False)
+    df_avg_word_merged.to_csv("results/zuco2_average_word_level_umr_eye_features.csv", index=False)
+
+    # Compute correlations
+    result_sentence_avg = comparator.compute_correlations(level="sentence", participant_level=False, return_heatmap=True)
+    result_sentence_part = comparator.compute_correlations(level="sentence", participant_level=True)
+    result_word_avg = comparator.compute_correlations(level="word", participant_level=False, return_heatmap=True)
+    result_word_part = comparator.compute_correlations(level="word", participant_level=True)
+
+    # Plot participant correlations
+    if result_sentence_part["participant_level_summary"]:
+        comparator.plot_participant_correlations(result_sentence_part["participant_level_summary"], save_path="plots/participant_corrs_sentence.png")
+    if result_word_part["participant_level_summary"]:
+        comparator.plot_participant_correlations(result_word_part["participant_level_summary"], save_path="plots/participant_corrs_word.png")
         
-    if not Path(eye_tracking_part_sentence_file).exists():
-        return {"error": "Participant sentence-level eye-tracking file not found."}
-    
-    df_eye_part = pd.read_csv(eye_tracking_part_sentence_file)
-    
-    comparator = UMREyeTrackingComparator(df_umr, df_eye_avg, df_eye_part)
+    # Run mixed-effects models
+    sentence_umr_features = ["num_nodes", "num_edges", "max_depth", "avg_depth",
+                             "num_predicates", "num_entities", "predicate_entity_ratio",
+                             "num_reentrancies", "avg_degree", "max_degree",
+                             "num_coordination", "num_temporal_quantities"]
+    sentence_eye_metrics = ["FFD_avg", "GD_avg", "GPT_avg", "TRT_avg", "TRT_sum", "nFix_avg", "nFix_sum", "reading_order_avg"]
 
-    # Average sentence-level correlations
-    result_avg = comparator.compute_correlations(return_heatmap=True, participant_level=False)
+    word_umr_features = ["depth", "degree", "in_degree", "out_degree"]
+    word_eye_metrics = ["FFD", "GD", "GPT", "TRT", "nFix", "reading_order"]
 
-    # Participant sentence-level correlations
-    if df_eye_part is not None:
-        result_participant = comparator.compute_correlations(return_heatmap=False, participant_level=True)
-        participant_summary = result_participant["participant_level_summary"]
-        participant_plot_b64 = comparator.plot_participant_correlations(participant_summary)
-    else:
-        participant_summary = None
-        
-    # Mixed-effects modelling
-    result = comparator.mixed_effects_model(["num_nodes", "num_edges"], "FFD_avg")
-    print(result["model_summary"])
+    df_mixed_sent = comparator.run_mixed_effects_sent_level_batch(
+        umr_features=sentence_umr_features,
+        eye_metrics=sentence_eye_metrics,
+        max_features_per_model=2,
+        save_path="results/mixed_effects_results_sentence.csv"
+    )
+
+    df_mixed_word = comparator.run_mixed_effects_word_level_batch(
+        umr_features=word_umr_features,
+        eye_metrics=word_eye_metrics,
+        max_features_per_model=2,
+        save_path="results/mixed_effects_results_word.csv"
+    )
 
     return {
-        "top_sentence_level_correlations": result_avg["correlations_sorted"][:10],
-        "sentence_level_corr_matrix": result_avg["corr_matrix"],
-        "participant_level_summary": participant_summary
+        "top_sentence_level_correlations": result_sentence_avg["correlations_sorted"][:10],
+        "sentence_level_corr_matrix": result_sentence_avg["corr_matrix"],
+        "top_word_level_correlations": result_word_avg["correlations_sorted"][:10],
+        "word_level_corr_matrix": result_word_avg["corr_matrix"],
+        "participant_sentence_summary": result_sentence_part["participant_level_summary"],
+        "participant_word_summary": result_word_part["participant_level_summary"]
     }
 
 

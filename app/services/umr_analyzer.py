@@ -1,6 +1,7 @@
 import logging
 from typing import Dict, List, Optional, Any
 import networkx as nx
+import pandas as pd
 import penman
 from penman.graph import Graph
 import smatch
@@ -350,6 +351,94 @@ class UMRAnalyzer:
                     stats[key] = round(value, 2)
                     
         return sentence_umr_stats
+    
+    
+    def analyze_nodes(self, umr_data: list) -> pd.DataFrame:
+        """
+        Compute node-level UMR graph statistics for comparison with word-level eye-tracking measures.
+        """
+        rows = []
+
+        for item in umr_data:
+            sentence_id = item.get("sentence_id")
+            penman_str = item.get("umr_graph", "")
+            if not penman_str:
+                continue
+
+            pg = self.parse_penman(penman_str)
+            if not pg:
+                continue
+
+            G = self.to_networkx(pg)
+            root = pg.top
+
+            # Compute depths
+            try:
+                depths = nx.shortest_path_length(G, source=root)
+            except Exception:
+                depths = {}
+
+            # Build node -> words mapping
+            node_to_words = {}
+            for node in G.nodes():
+                if sentence_id == 0:
+                    print(f"Node: {node}")
+                data = G.nodes[node]
+                node_type = data.get("type")
+                instance = data.get("instance") if node_type == "instance" else None
+
+                words = []
+
+                # :name nodes -> combine :op* attributes
+                if instance == "name" and node_type == "instance":
+                    for succ in G.successors(node):
+                        succ_data = G.nodes[succ]
+                        if succ_data.get("type") == "attribute" and ":op" in succ:
+                            val = succ_data.get("value", "").strip('"')
+                            if val:
+                                words.append(val)
+
+                # date-entity -> :year attributes
+                elif instance == "date-entity":
+                    for succ in G.successors(node):
+                        succ_data = G.nodes[succ]
+                        if succ_data.get("type") == "attribute" and ":year" in succ:
+                            val = succ_data.get("value")
+                            if val:
+                                words.append(str(val))
+
+                # Normal instance node
+                elif instance:
+                    words.append(instance)
+
+                if sentence_id == 0:
+                    print(f"Words for node {node}: {words}")
+                node_to_words[node] = words
+
+            for node in G.nodes():
+                data = G.nodes[node]
+                node_type = data.get("type")
+                instance = data.get("instance") if node_type == "instance" else None
+
+                word_list = node_to_words.get(node, [])
+                for word_index, word in enumerate(word_list):
+                    row = {
+                        "sentence_id": sentence_id,
+                        "node_id": node,
+                        "node_type": node_type,
+                        "instance": instance,
+                        "word_index": word_index,
+                        "word": word,
+                        "depth": depths.get(node, 0),
+                        "degree": G.degree(node),
+                        "in_degree": G.in_degree(node),
+                        "out_degree": G.out_degree(node)
+                    }
+                    rows.append(row)
+
+        df = pd.DataFrame(rows)
+        df = df.sort_values(by=["sentence_id", "word_index"]).reset_index(drop=True)
+        return df
 
 
 def create_umr_analyzer() -> UMRAnalyzer:

@@ -93,3 +93,41 @@ def create_participants_sentence_level_file(zuco_eye_file: str, output_file: str
 
     result_df.to_csv(output_file, index=False)
     print(f"Saved participant-level sentence eye-tracking file to {output_file}")
+    
+    
+def create_participants_word_level_file(zuco_eye_file: str, output_file: str):
+    """
+    Create word-level eye-tracking file for each participant from ZuCo data.
+    Save to the same output file.
+    """
+    
+    df = pd.read_csv(zuco_eye_file, sep=",")
+
+    # Select relevant columns
+    eye_metrics = ["FFD", "GD", "GPT", "TRT", "nFix", "reading_order"]
+    selected_columns = ["subject", "sentence_id", "word_id", "content"] + eye_metrics
+    participant_word_level_df = df[selected_columns].copy()
+    participant_word_level_df.to_csv(output_file, index=False)
+    print(f"Saved participant-level word eye-tracking file to {output_file}")
+    
+    
+def create_average_word_level_file(zuco_eye_file: str, output_file: str):
+    """
+    Create word-level averaged eye-tracking file across participants from ZuCo data.
+    Save to the same output file.
+    """
+    
+    df = pd.read_csv(zuco_eye_file, sep=",")
+
+    eye_metrics = ["FFD", "GD", "GPT", "TRT", "nFix", "reading_order"]
+
+    grouped = df.groupby(
+        ["sentence_id", "word_id", "content"],
+        as_index=False
+    )[eye_metrics].mean()
+
+    grouped = grouped.round(2)
+    grouped = grouped.sort_values(["sentence_id", "word_id"])
+
+    grouped.to_csv(output_file, index=False)
+    print(f"Saved averaged word-level eye-tracking file to {output_file}")

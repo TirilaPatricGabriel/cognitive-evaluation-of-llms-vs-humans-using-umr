@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import List, Dict
 from bert_score import score
 
@@ -13,11 +14,14 @@ class BERTScoreCalculator:
             "english": "en",
             "romanian": "ro"
         }
+        self.languages_with_baseline = {"en", "zh", "de", "fr", "es", "ru", "ja", "ko"}
 
     def calculate(self, reference_texts: List[str], candidate_texts: List[str], language: str = "romanian") -> Dict:
         lang_code = self.supported_languages.get(language, "ro")
 
         logger.info(f"Calculating BERTScore for {len(reference_texts)} text pairs in {language} (code: {lang_code})")
+
+        use_rescaling = False
 
         try:
             P, R, F1 = score(
@@ -25,7 +29,7 @@ class BERTScoreCalculator:
                 reference_texts,
                 lang=lang_code,
                 verbose=False,
-                rescale_with_baseline=True
+                rescale_with_baseline=use_rescaling
             )
 
             result = {
@@ -36,7 +40,8 @@ class BERTScoreCalculator:
                 "recall_scores": [round(r.item(), 4) for r in R],
                 "f1_scores": [round(f.item(), 4) for f in F1],
                 "num_pairs": len(reference_texts),
-                "language": language
+                "language": language,
+                "rescaled": use_rescaling
             }
 
             logger.info(f"BERTScore computed: P={result['precision']}, R={result['recall']}, F1={result['f1']}")

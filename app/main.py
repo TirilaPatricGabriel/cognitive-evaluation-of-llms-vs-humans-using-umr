@@ -381,6 +381,8 @@ def full_pipeline(limit: int = None):
 
     def process_umr_task(task):
         result = parser.parse_text(task["text"], task["language"])
+        # Add combined graph for evaluation metrics
+        result["umr_graph"] = parser.get_combined_graph(result)
         result.update({
             "original_text": task["text"],
             "language": task["language"],
@@ -563,12 +565,12 @@ def full_pipeline(limit: int = None):
 
     print(f"  - Saved comprehensive analysis to {comprehensive_file}")
     print(f"\n  COMPREHENSIVE RESULTS:")
-    print(f"    - BERTScore F1:        {comprehensive_aggregate['average_bertscore_f1']:.4f} (Target: ≥0.85)")
-    print(f"    - Soft-Smatch F1:      {comprehensive_aggregate['average_soft_smatch_f1']:.4f} (Target: ≥0.50)")
+    print(f"    - BERTScore F1:        {comprehensive_aggregate['average_bertscore_f1']:.4f} (Target: 0.85)")
+    print(f"    - Soft-Smatch F1:      {comprehensive_aggregate['average_soft_smatch_f1']:.4f} (Target: 0.50)")
     print(f"    - Concept Overlap F1:  {comprehensive_aggregate['average_concept_overlap_f1']:.4f}")
     print(f"    - Standard Smatch F1:  {comprehensive_aggregate['average_standard_smatch_f1']:.4f} (baseline)")
-    print(f"    - Complexity Score:    {comprehensive_aggregate['average_complexity_score']:.4f} (Target: ≥0.70)")
-    print(f"    - OVERALL SCORE:       {comprehensive_aggregate['average_overall_score']:.4f} (Target: ≥0.70)")
+    print(f"    - Complexity Score:    {comprehensive_aggregate['average_complexity_score']:.4f} (Target: 0.70)")
+    print(f"    - OVERALL SCORE:       {comprehensive_aggregate['average_overall_score']:.4f} (Target: 0.70)")
     print(f"    - Interpretation:      {comprehensive_aggregate['interpretation']}")
 
     print(f"\nSTEP 7/8: Creating comprehensive results file with ALL metrics")

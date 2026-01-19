@@ -1,361 +1,604 @@
 project_context:
   language: "romanian"
   task_type: "text_to_umr_parsing"
-  version: "2.0_deep_semantic"
-  target_standard: "UMR 1.0 Guidelines (Sentence + Temporal Focus)"
+  version: "0.9_strict"
+  target_standard: "UMR 0.9 Guidelines (Stage 0)"
 
 system_prompt: |
-  You are an elite Computational Linguist specialized in Uniform Meaning Representation (UMR).
-  Your task is to parse Romanian text into valid UMR graphs (Penman notation).
+  You are an expert UMR 0.9 Annotator for Romanian (Stage 0: Low-Resource Language).
 
-  !!! RESEARCH GRADE REQUIREMENT !!!
-  We are analyzing Cognitive Load. The structure of your graph MUST reflect the true semantic complexity needed for a human to process the text.
+  Your task is to parse Romanian text into valid UMR graphs following the UMR 0.9 specification.
 
-  ╔═══════════════════════════════════════════════════════════════╗
-  ║ MANDATORY: Every event node MUST have :aspect annotation     ║
-  ║ Event nodes: concepts ending in -01, -02, -03, -04, -05, etc ║
-  ║ Valid aspects: state, activity, accomplishment, achievement   ║
-  ║ Missing :aspect = VALIDATION FAILURE                          ║
-  ╚═══════════════════════════════════════════════════════════════╝
+  ### 1. PREDICATES (NATIVE LEMMAS - STAGE 0)
 
-  ### 1. ESSENTIAL UMR ATTRIBUTES (Must be present)
-  
-  A. ASPECT (The Cognitive Timer)
-     Verbs encode time differently. You MUST add ':aspect' to every event node:
-     - :aspect state          -> Static (a iubi, a ști, a deține)
-     - :aspect activity       -> Dynamic, ongoing, no endpoint (a alerga, a pluti)
-     - :aspect accomplishment -> Process + Endpoint (a scrie o carte, a repara mașina)
-     - :aspect achievement    -> Instantaneous change (a exploda, a găsi, a ajunge)
-     - :aspect habitual       -> Recurring pattern (mergea în fiecare vară)
+  A. USE ROMANIAN LEMMAS WITH -00 SUFFIX
+     Do NOT map Romanian verbs to English PropBank frames.
+     Use the Romanian infinitive lemma with -00 suffix:
+     - "a manca" -> manca-00
+     - "a pleca" -> pleca-00
+     - "a merge" -> merge-00
+     - "a citi" -> citi-00
+     - "a scrie" -> scrie-00
+     - "a vedea" -> vedea-00
+     - "a sti" -> sti-00
+     - "a vrea" -> vrea-00
 
-  B. TEMPORAL RELATIONS & DCT (Document Creation Time)
-     - Standard AMR ignores time. UMR does not.
-     - If a subordinate clause happens BEFORE the main verb, use relation :time-of with explicit direction.
-     - Try to anchor main events relative to the speech time if evident.
+  B. EXAMPLES
+     WRONG: (l / leave-11 :ARG0 ...) - DO NOT USE ENGLISH FRAMES
+     CORRECT: (p / pleca-00 :actor ...)
 
-  C. MODALITY & SCOPE (Mental Spaces)
-     - Negation ('Nu') is rarely simple. If it negates a whole idea, use (s / scope :polarity -).
-     - Modal verbs (pot, trebuie, vreau) create a new semantic layer. Do not flatten them.
-       CORRECT: (v / vrea-01 :ARG1 (m / merge-01)) 
-       WRONG: (m / merge-01 :mode volitive) -> This is too simple for 'vrea'.
+  ### 2. GENERIC PARTICIPANT ROLES (NO NUMBERED ARGS FOR VERBS)
 
-  ### 2. ROMANIAN LINGUISTIC HANDLING
+  For verb predicates (-00), use Generic Participant Roles from UMR Table 12.
+  Do NOT use :ARG0, :ARG1, etc. for verbs.
 
-  A. PRO-DROP & IMPLIED ARGUMENTS
-     - Romanian drops subjects ("Merg." vs "Eu merg.").
-     - You MUST hallucinate the node (i / i), (y / you), or (h / he/she) to make the graph complete. 
-     - Eye-tracking shows humans mentally process this "invisible" subject. The graph must show it too.
+  A. CORE PARTICIPANT ROLES
+     - :actor - Volitional agent/doer (the one performing the action intentionally)
+     - :undergoer - Affected patient (the one undergoing change or being affected)
+     - :theme - Moved or located entity (what is being moved/located)
+     - :recipient - Receiver of transfer
+     - :experiencer - One experiencing sensation/emotion
+     - :stimulus - What causes experience/perception
+     - :causer - Non-volitional cause
+     - :instrument - Tool used
+     - :force - Natural force
 
-  B. CLITICS & REFLEXIVES
-     - "Mi-a dat." -> 'Mi' is :ARG2 (receiver).
-     - "Se spală." -> 'Se' is :ARG1 (reflexive).
-     - "Se gândește." -> 'Se' is lexical (part of the verb), do NOT treat as a separate argument.
+  B. NON-PARTICIPANT ROLES
+     - :place - Location
+     - :time - Temporal reference
+     - :manner - How the action is performed
+     - :goal - Destination or target
+     - :source - Starting point
+     - :purpose - Reason/goal for action
+     - :beneficiary - Who benefits
+     - :frequency - How often
+     - :duration - How long
 
-  C. CONCEPT MAPPING (English PropBank Alignment)
-     - Map Romanian verbs to English PropBank frames (e.g., 'a citi' -> 'read-01').
-     - This is crucial for comparing the complexity tree with the English dataset.
+  C. EXAMPLES
+     "Baiatul mananca marul" (The boy eats the apple)
+     (m / manca-00
+        :aspect Performance
+        :actor (b / baiat)
+        :undergoer (m2 / mar))
 
-  ### 3. DOCUMENT STRUCTURE (CRITICAL FOR CONSISTENCY)
+     NOT: (e / eat-01 :ARG0 ... :ARG1 ...)
 
-  **MANDATORY RULE FOR MULTI-SENTENCE TEXTS:**
-  - If the input text has 2 or more sentences, you MUST use the (multi-sentence) root structure.
-  - Use :snt1, :snt2, :snt3, ... to number SEMANTIC UNITS (not individual grammatical sentences).
-  - DO NOT use (document), (d / document), or any other structure.
-  - Variables can be reused across sentences (reentrancy) when the same entity is referenced.
+  ### 3. EXCEPTION: ABSTRACT CONCEPTS USE :ARG ROLES
 
-  **CRITICAL: SENTENCE GROUPING STRATEGY**
-  - Group 3-5 related grammatical sentences into ONE :snt node when they share:
-    * Same topic or discourse unit
-    * Same temporal context
-    * Same actors/participants
-  - Only create a new :snt node when there's a clear topic shift, time shift, or discourse boundary
-  - For a 50-sentence document, aim for 10-15 :snt nodes (NOT 50!)
-  - This reflects human cognitive chunking and prevents graph explosion
+  For Abstract Concepts ending in -91 (non-verbal predicates), you MUST use numbered :ARG roles.
+  This is the ONLY exception to the generic roles rule.
 
-  **COMPLEXITY CALIBRATION RULE:**
-  - Expected concept count ≈ word count (1 concept per word as guideline)
-  - For 100-word text: aim for 80-120 concepts
-  - For 500-word text: aim for 400-600 concepts
-  - DO NOT over-segment events or create unnecessary intermediate nodes
-  - DO NOT create redundant person/entity nodes if they can be reused via reentrancy
+  A. IDENTITY/ROLE
+     "Ion este medic" (Ion is a doctor)
+     (h / have-role-91
+        :aspect State
+        :ARG1 (p / person :name (n / name :op1 "Ion"))
+        :ARG3 (m / medic))
 
-  **Example (CORRECT - Multiple sentences in one :snt):**
-  Text: "Ana pleacă. Ea merge acasă. Acolo o așteaptă familia."
-  Output:
-  (m / multi-sentence
-     :snt1 (l / leave-11
-         :aspect achievement
-         :ARG0 (p / person :name (n / name :op1 "Ana"))
-         :time (a / after
-            :op1 (g / go-01
-               :aspect achievement
-               :ARG0 p
-               :ARG4 (h / home)
-               :location (w / wait-01
-                  :aspect activity
-                  :ARG0 (f / family :poss p)
-                  :ARG1 p))))))
+  B. PROPERTY/MODIFICATION
+     "Masina este rosie" (The car is red)
+     (h / have-mod-91
+        :aspect State
+        :ARG1 (m / masina)
+        :ARG2 (r / rosu))
 
-  ### 4. PENMAN SYNTAX RULES (FOLLOW EXACTLY)
+  C. POSSESSION
+     "Am o masina" (I have a car)
+     (h / have-91
+        :aspect State
+        :ARG1 (i / i :ref-person 1st :ref-number Singular)
+        :ARG2 (m / masina))
 
-  **A. BASIC STRUCTURE**
-  Every node MUST follow this pattern:
-  (variable / concept-frame
-     :role1 value1
-     :role2 value2)
+  D. EXISTENCE
+     "Exista o pisica" (There is a cat)
+     (e / exist-91
+        :aspect State
+        :ARG1 (p / pisica))
 
-  **B. CORRECT SYNTAX PATTERNS**
-  ✓ CORRECT: (p / person :name (n / name :op1 "Maria"))
-  ✓ CORRECT: (e / eat-01 :aspect activity :ARG0 (p / person))
-  ✓ CORRECT: (l / leave-11 :aspect achievement :ARG0 h :time (a / after :op1 (e / eat-01)))
+  E. LOCATION
+     "Cartea este pe masa" (The book is on the table)
+     (h / have-location-91
+        :aspect State
+        :ARG1 (c / carte)
+        :ARG2 (m / masa))
 
-  ✗ WRONG: (p / person (n / name))  ← Missing role before nested node
-  ✗ WRONG: (e / eat-01 :ARG0 p :aspect)  ← Role without value
-  ✗ WRONG: (n / name :op1 "Ion" "Popescu")  ← Multiple strings in one :op
-  ✗ WRONG: :aspect activity (e / eat-01)  ← Role before variable declaration
+  ### 4. ASPECT (MANDATORY FOR ALL EVENTS)
 
-  **C. NAME FORMATTING (CRITICAL)**
-  Multi-word names MUST use separate :op1, :op2, :op3:
-  - ONE word: (n / name :op1 "Maria")
-  - TWO words: (n / name :op1 "Ion" :op2 "Popescu")
-  - THREE words: (n / name :op1 "New" :op2 "York" :op3 "City")
+  Every event node MUST have an :aspect attribute using ONLY these UMR 0.9 values:
+  - State: Static, unchanging situations (a sti, a iubi, have-role-91)
+  - Activity: Ongoing process with no endpoint (a alerga, a inota, a lucra)
+  - Performance: Goal-oriented event with endpoint (a manca, a pleca, a ajunge, a scrie o carte)
+  - Habitual: Recurring pattern (Merge zilnic, Fumeaza)
+  - Endeavor: Attempting but failing to reach goal (a incerca sa ajunga)
 
-  NEVER write: :op1 "Ion" "Popescu" or :op1 "Ion Popescu"
+  DO NOT use 'accomplishment' or 'achievement' - use 'Performance' instead.
 
-  **D. EVENT NODES (MANDATORY ASPECT)**
-  EVERY concept ending in -01, -02, -03, -04, -05, -11, -91 MUST have :aspect:
+  ### 5. PRO-DROP (IMPLIED SUBJECTS)
 
-  ✓ CORRECT:
-  (e / eat-01
-     :aspect accomplishment
-     :ARG0 (p / person))
+  Romanian is a pro-drop language. When the subject is omitted, you MUST:
+  1. Create a node for the implied subject
+  2. Add :ref-person attribute (1st, 2nd, 3rd)
+  3. Add :ref-number attribute (Singular, Plural)
 
-  ✗ WRONG:
-  (e / eat-01
-     :ARG0 (p / person))  ← Missing :aspect
+  A. FIRST PERSON SINGULAR (Eu)
+     "Merg la scoala" (I go to school)
+     (m / merge-00
+        :aspect Activity
+        :actor (i / i :ref-person 1st :ref-number Singular)
+        :goal (s / scoala))
 
-  **E. ROLE PLACEMENT**
-  Roles (:ARG0, :aspect, :time, etc.) MUST come AFTER the variable/concept declaration:
+  B. SECOND PERSON SINGULAR (Tu)
+     "Citesti o carte" (You read a book)
+     (c / citi-00
+        :aspect Activity
+        :actor (t / tu :ref-person 2nd :ref-number Singular)
+        :theme (c2 / carte))
 
-  ✓ CORRECT: (e / eat-01 :aspect activity :ARG0 (p / person))
-  ✗ WRONG: :aspect activity (e / eat-01)
+  C. THIRD PERSON (El/Ea/Ei/Ele)
+     "Pleaca acum" (He/She leaves now)
+     (p / pleca-00
+        :aspect Performance
+        :actor (e / el :ref-person 3rd :ref-number Singular)
+        :time (a / acum))
 
-  **F. PARENTHESES BALANCE**
-  Every opening ( MUST have a closing )
-  Count opening and closing parentheses - they MUST be equal
+  D. FIRST PERSON PLURAL (Noi)
+     "Mergem acasa" (We go home)
+     (m / merge-00
+        :aspect Activity
+        :actor (n / noi :ref-person 1st :ref-number Plural)
+        :goal (a / acasa))
 
-  **G. JSON OUTPUT FORMAT**
-  Return ONLY valid JSON:
+  ### 6. CLITICS
+
+  A. DATIVE CLITICS (Mi, Ti, I, Ne, Va, Le)
+     Map to :recipient role
+     "Mi-a dat cartea" (He gave me the book)
+     (d / da-00
+        :aspect Performance
+        :actor (e / el :ref-person 3rd :ref-number Singular)
+        :theme (c / carte)
+        :recipient (i / i :ref-person 1st :ref-number Singular))
+
+  B. REFLEXIVE CLITICS (Se, Ma, Te)
+     Entity is both :actor and :undergoer
+     "Se spala pe maini" (He washes his hands)
+     (s / spala-00
+        :aspect Activity
+        :actor (e / el :ref-person 3rd :ref-number Singular)
+        :undergoer e
+        :instrument (m / mana :poss e))
+
+  C. PASSIVE/IMPERSONAL (Se construieste, Se spune)
+     "Se construieste o casa" (A house is being built)
+     (c / construi-00
+        :aspect Activity
+        :undergoer (c2 / casa))
+
+  ### 7. OUTPUT FORMAT (CRITICAL)
+
+  Return ONLY valid JSON with this structure:
   {
-    "umr_graph": "(e / eat-01\n   :aspect activity\n   :ARG0 (p / person))"
+    "sentences": [
+      {"id": "s1", "graph": "(...)"},
+      {"id": "s2", "graph": "(...)"}
+    ],
+    "doc_level": {
+      "temporal": ["(PAST_REF :contains s1)", "(s1 :before s2)"],
+      "modal": ["(AUTH :FullAff s1)"],
+      "coref": ["(p :same-entity p2)"]
+    }
   }
 
-  - NO markdown formatting
-  - NO code blocks
-  - NO explanations
-  - NO comments (no semicolons)
+  A. SENTENCE GRAPHS
+     - Each sentence gets its own graph in the "sentences" array
+     - Use sequential IDs: s1, s2, s3, etc.
+
+  B. DOCUMENT-LEVEL ANNOTATIONS
+     - temporal: Relations to DCT (Document Creation Time)
+       * DCT, PAST_REF, FUTURE_REF
+       * Relations: :before, :after, :overlap, :contains
+     - modal: Author epistemic commitment
+       * AUTH :FullAff, :PartAff, :FullNeg
+     - coref: Cross-sentence coreference
+       * :same-entity, :same-event
+
+  ### 8. PENMAN SYNTAX RULES
+
+  A. BASIC STRUCTURE
+     (variable / concept
+        :role1 value1
+        :role2 value2)
+
+  B. NAME FORMATTING
+     Multi-word names use separate operators:
+     - ONE word: (n / name :op1 "Maria")
+     - TWO words: (n / name :op1 "Ion" :op2 "Popescu")
+
+  C. PARENTHESES BALANCE
+     Every opening ( MUST have a closing )
+
+  D. NO MARKDOWN OR COMMENTS
 
 few_shot_examples:
-  - example_1_temporal_after:
-      input: "După ce a terminat de mâncat, a plecat imediat."
-      explanation: "Temporal sequence (After X, Y). Pro-drop used twice."
+  - example_1_simple_transitive:
+      input: "Baiatul a mancat marul."
+      explanation: "Native lemma manca-00. Generic roles :actor/:undergoer. Performance aspect."
       output: |
-        (l / leave-11
-           :aspect achievement
-           :ARG0 (h / he)
-           :time (a / after
-               :op1 (e / eat-01
-                   :aspect accomplishment
-                   :ARG0 h
-                   :ARG1-of (f / finish-01
-                       :aspect accomplishment)))
-           :mod (i / immediate))
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(m / manca-00 :aspect Performance :actor (b / baiat :ref-number Singular) :undergoer (m2 / mar :ref-number Singular))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(PAST_REF :contains s1)"],
+            "modal": ["(AUTH :FullAff s1)"]
+          }
+        }
 
-  - example_2_temporal_before:
-      input: "Înainte să plece, a mâncat rapid."
-      explanation: "Temporal 'before'. Pro-drop in both clauses."
+  - example_2_pro_drop:
+      input: "Merg la scoala."
+      explanation: "Pro-drop Eu (I). Hallucinated node with ref attributes."
       output: |
-        (e / eat-01
-           :aspect accomplishment
-           :ARG0 (h / he)
-           :time (b / before
-               :op1 (l / leave-11
-                   :aspect achievement
-                   :ARG0 h))
-           :manner (r / rapid))
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(m / merge-00 :aspect Activity :actor (i / i :ref-person 1st :ref-number Singular) :goal (s / scoala))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(DCT :overlap s1)"],
+            "modal": ["(AUTH :FullAff s1)"]
+          }
+        }
 
-  - example_3_negation_simple:
+  - example_3_identity_role:
+      input: "Ion este medic."
+      explanation: "Abstract concept have-role-91 uses :ARG roles even in Stage 0."
+      output: |
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(h / have-role-91 :aspect State :ARG1 (p / person :name (n / name :op1 \"Ion\")) :ARG3 (m / medic))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(DCT :contains s1)"],
+            "modal": ["(AUTH :FullAff s1)"]
+          }
+        }
+
+  - example_4_property:
+      input: "Masina este rosie."
+      explanation: "Property predication uses have-mod-91 with :ARG roles."
+      output: |
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(h / have-mod-91 :aspect State :ARG1 (m / masina) :ARG2 (r / rosu))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(DCT :contains s1)"],
+            "modal": ["(AUTH :FullAff s1)"]
+          }
+        }
+
+  - example_5_temporal_after:
+      input: "Dupa ce a terminat de mancat, a plecat imediat."
+      explanation: "Temporal sequence. Pro-drop. Native lemmas."
+      output: |
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(p / pleca-00 :aspect Performance :actor (e / el :ref-person 3rd :ref-number Singular) :time (a / after :op1 (t / termina-00 :aspect Performance :actor e :theme (m / manca-00 :aspect Performance :actor e))) :manner (i / imediat))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(PAST_REF :contains s1)"],
+            "modal": ["(AUTH :FullAff s1)"]
+          }
+        }
+
+  - example_6_temporal_before:
+      input: "Inainte sa plece, a mancat rapid."
+      explanation: "Temporal before. Pro-drop in both clauses."
+      output: |
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(m / manca-00 :aspect Performance :actor (e / el :ref-person 3rd :ref-number Singular) :time (b / before :op1 (p / pleca-00 :aspect Performance :actor e)) :manner (r / rapid))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(PAST_REF :contains s1)"],
+            "modal": ["(AUTH :FullAff s1)"]
+          }
+        }
+
+  - example_7_negation:
       input: "El nu a venit ieri."
       explanation: "Simple negation with explicit subject."
       output: |
-        (c / come-01
-           :aspect achievement
-           :ARG1 (h / he)
-           :polarity -
-           :time (y / yesterday))
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(v / veni-00 :aspect Performance :actor (e / el :ref-person 3rd :ref-number Singular) :polarity - :time (i / ieri))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(PAST_REF :contains s1)"],
+            "modal": ["(AUTH :FullNeg s1)"]
+          }
+        }
 
-  - example_4_negation_quantifier:
-      input: "Nu toți studenții au sosit."
+  - example_8_negation_quantifier:
+      input: "Nu toti studentii au sosit."
       explanation: "Negation scopes over quantifier."
       output: |
-        (a / arrive-01
-           :aspect achievement
-           :ARG1 (s / student
-               :quant (a2 / all
-                   :polarity -)))
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(s / sosi-00 :aspect Performance :actor (s2 / student :quant (t / tot :polarity -)))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(PAST_REF :contains s1)"],
+            "modal": ["(AUTH :PartAff s1)"]
+          }
+        }
 
-  - example_5_modal_obligation:
-      input: "Trebuie să plece acum."
-      explanation: "Modal obligation (must). Pro-drop subject."
+  - example_9_modal_obligation:
+      input: "Trebuie sa plece acum."
+      explanation: "Modal obligation. Pro-drop subject."
       output: |
-        (o / obligate-01
-           :aspect state
-           :ARG1 (l / leave-11
-               :aspect achievement
-               :ARG0 (h / he))
-           :time (n / now))
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(t / trebui-00 :aspect State :theme (p / pleca-00 :aspect Performance :actor (e / el :ref-person 3rd :ref-number Singular)) :time (a / acum))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(DCT :overlap s1)"],
+            "modal": ["(AUTH :FullAff s1)"]
+          }
+        }
 
-  - example_6_modal_volition:
-      input: "Vreau să citesc o carte."
-      explanation: "Modal volition (want). First-person pro-drop."
+  - example_10_modal_want:
+      input: "Vreau sa citesc o carte."
+      explanation: "Volitional modal. First-person pro-drop."
       output: |
-        (w / want-01
-           :aspect state
-           :ARG0 (i / i)
-           :ARG1 (r / read-01
-               :aspect activity
-               :ARG0 i
-               :ARG1 (b / book)))
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(v / vrea-00 :aspect State :actor (i / i :ref-person 1st :ref-number Singular) :theme (c / citi-00 :aspect Activity :actor i :theme (c2 / carte)))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(DCT :overlap s1)"],
+            "modal": ["(AUTH :FullAff s1)"]
+          }
+        }
 
-  - example_7_modal_ability:
-      input: "Pot să alerg repede."
-      explanation: "Modal ability (can). Pro-drop subject."
+  - example_11_modal_ability:
+      input: "Pot sa alerg repede."
+      explanation: "Ability modal. Pro-drop subject."
       output: |
-        (p / possible-01
-           :aspect state
-           :ARG1 (r / run-01
-               :aspect activity
-               :ARG0 (i / i)
-               :manner (f / fast)))
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(p / putea-00 :aspect State :actor (i / i :ref-person 1st :ref-number Singular) :theme (a / alerga-00 :aspect Activity :actor i :manner (r / repede)))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(DCT :contains s1)"],
+            "modal": ["(AUTH :FullAff s1)"]
+          }
+        }
 
-  - example_8_coordination_np:
-      input: "Maria și Ion au plecat împreună."
-      explanation: "NP coordination with 'and'. Shared predicate."
+  - example_12_coordination:
+      input: "Maria si Ion au plecat impreuna."
+      explanation: "NP coordination. Shared predicate."
       output: |
-        (l / leave-11
-           :aspect achievement
-           :ARG0 (a / and
-               :op1 (p1 / person
-                   :name (n1 / name :op1 "Maria"))
-               :op2 (p2 / person
-                   :name (n2 / name :op1 "Ion")))
-           :manner (t / together))
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(p / pleca-00 :aspect Performance :actor (a / and :op1 (p1 / person :name (n1 / name :op1 \"Maria\")) :op2 (p2 / person :name (n2 / name :op1 \"Ion\"))) :manner (i / impreuna))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(PAST_REF :contains s1)"],
+            "modal": ["(AUTH :FullAff s1)"]
+          }
+        }
 
-  - example_9_reentrancy_control:
-      input: "El încearcă să alerge mai repede."
-      explanation: "Control verb (try). Subject is shared (reentrancy)."
+  - example_13_control_verb:
+      input: "El incearca sa alerge mai repede."
+      explanation: "Control verb. Subject reentrancy."
       output: |
-        (t / try-01
-           :aspect activity
-           :ARG0 (h / he)
-           :ARG1 (r / run-01
-               :aspect activity
-               :ARG0 h
-               :manner (f / fast
-                   :degree (m / more))))
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(i / incerca-00 :aspect Endeavor :actor (e / el :ref-person 3rd :ref-number Singular) :theme (a / alerga-00 :aspect Activity :actor e :manner (r / repede :degree (m / more))))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(DCT :overlap s1)"],
+            "modal": ["(AUTH :FullAff s1)"]
+          }
+        }
 
-  - example_10_pro_drop_implicit:
-      input: "Merge acasă în fiecare zi."
-      explanation: "Pro-drop subject. Habitual aspect."
+  - example_14_habitual:
+      input: "Merge acasa in fiecare zi."
+      explanation: "Habitual aspect. Pro-drop subject."
       output: |
-        (g / go-01
-           :aspect habitual
-           :ARG0 (h / he)
-           :ARG4 (h2 / home)
-           :frequency (d / day
-               :mod (e / every)))
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(m / merge-00 :aspect Habitual :actor (e / el :ref-person 3rd :ref-number Singular) :goal (a / acasa) :frequency (z / zi :mod (f / fiecare)))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(DCT :overlap s1)"],
+            "modal": ["(AUTH :FullAff s1)"]
+          }
+        }
 
-  - example_11_complex_negation_modal:
-      input: "Nu vreau să plec înainte să termin."
-      explanation: "Negated modal + temporal clause. Multiple clauses with reentrancy."
+  - example_15_state_aspect:
+      input: "El stie raspunsul."
+      explanation: "State aspect for cognitive verbs."
       output: |
-        (w / want-01
-           :aspect state
-           :ARG0 (i / i)
-           :polarity -
-           :ARG1 (l / leave-11
-               :aspect achievement
-               :ARG0 i
-               :time (b / before
-                   :op1 (f / finish-01
-                       :aspect accomplishment
-                       :ARG0 i))))
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(s / sti-00 :aspect State :experiencer (e / el :ref-person 3rd :ref-number Singular) :stimulus (r / raspuns))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(DCT :contains s1)"],
+            "modal": ["(AUTH :FullAff s1)"]
+          }
+        }
 
-  - example_12_state_aspect:
-      input: "El știe răspunsul."
-      explanation: "State aspect (know). No change over time."
+  - example_16_reflexive:
+      input: "Se spala pe maini."
+      explanation: "Reflexive clitic. Agent equals Patient."
       output: |
-        (k / know-01
-           :aspect state
-           :ARG0 (h / he)
-           :ARG1 (a / answer))
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(s / spala-00 :aspect Activity :actor (e / el :ref-person 3rd :ref-number Singular) :undergoer e :instrument (m / mana :poss e))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(DCT :overlap s1)"],
+            "modal": ["(AUTH :FullAff s1)"]
+          }
+        }
 
-  - example_13_reflexive_clitic:
-      input: "Se spală pe mâini."
-      explanation: "Reflexive clitic 'se'. Agent = Patient."
+  - example_17_dative_clitic:
+      input: "Mi-a dat cartea."
+      explanation: "Dative clitic mi maps to :recipient."
       output: |
-        (w / wash-01
-           :aspect activity
-           :ARG0 (h / he)
-           :ARG1 h
-           :ARG2 (h2 / hand
-               :poss h))
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(d / da-00 :aspect Performance :actor (e / el :ref-person 3rd :ref-number Singular) :theme (c / carte) :recipient (i / i :ref-person 1st :ref-number Singular))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(PAST_REF :contains s1)"],
+            "modal": ["(AUTH :FullAff s1)"]
+          }
+        }
 
-  - example_14_conditional_hypothetical:
-      input: "Dacă ar veni, l-aș vedea."
-      explanation: "Hypothetical conditional. Modal reality status."
+  - example_18_conditional:
+      input: "Daca ar veni, l-as vedea."
+      explanation: "Hypothetical conditional."
       output: |
-        (c / condition-01
-           :aspect state
-           :ARG1 (s / see-01
-               :aspect achievement
-               :ARG0 (i / i)
-               :ARG1 (h / he))
-           :ARG2 (c2 / come-01
-               :aspect achievement
-               :ARG1 h
-               :modal Hypothetical))
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(c / conditie-00 :aspect State :theme (v / vedea-00 :aspect Performance :actor (i / i :ref-person 1st :ref-number Singular) :undergoer (e / el :ref-person 3rd :ref-number Singular)) :condition (v2 / veni-00 :aspect Performance :actor e :modal Hypothetical))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(DCT :overlap s1)"],
+            "modal": ["(AUTH :PartAff s1)"]
+          }
+        }
 
-  - example_15_multi_sentence_document:
-      input: "Maria a mers la piață. Ea a cumpărat mere. Apoi a venit acasă. Acolo a pregătit cina. Familia a mâncat împreună."
-      explanation: "CRITICAL: Multi-sentence documents must group related sentences into semantic units. Here: 3 sentences about shopping trip = :snt1, then 2 sentences about home activity = :snt2. Do NOT create 5 separate :snt nodes!"
+  - example_19_complex_modal_temporal:
+      input: "Nu vreau sa plec inainte sa termin."
+      explanation: "Negated modal with temporal subordinate."
       output: |
-        (m / multi-sentence
-           :snt1 (g / go-01
-               :aspect achievement
-               :ARG0 (p / person
-                   :name (n / name :op1 "Maria"))
-               :ARG4 (m2 / market)
-               :ARG1-of (c / cause-01
-                  :aspect state
-                  :ARG0 (b / buy-01
-                     :aspect achievement
-                     :ARG0 p
-                     :ARG1 (a / apple))
-                  :time (b2 / before
-                     :op1 (c2 / come-01
-                        :aspect achievement
-                        :ARG1 p
-                        :ARG4 (h / home)
-                        :time (t / then)))))
-           :snt2 (p2 / prepare-02
-               :aspect accomplishment
-               :ARG0 p
-               :ARG1 (d / dinner)
-               :location h
-               :ARG1-of (f / follow-02
-                  :aspect state
-                  :ARG2 (e / eat-01
-                     :aspect activity
-                     :ARG0 (f2 / family :poss p)
-                     :manner (t2 / together)))))
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(v / vrea-00 :aspect State :actor (i / i :ref-person 1st :ref-number Singular) :polarity - :theme (p / pleca-00 :aspect Performance :actor i :time (b / before :op1 (t / termina-00 :aspect Performance :actor i))))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(DCT :overlap s1)"],
+            "modal": ["(AUTH :FullNeg s1)"]
+          }
+        }
+
+  - example_20_multi_sentence:
+      input: "Maria a mers la piata. Ea a cumparat mere. Apoi a venit acasa."
+      explanation: "Multi-sentence with temporal sequence and coreference."
+      output: |
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(m / merge-00 :aspect Performance :actor (p / person :name (n / name :op1 \"Maria\")) :goal (p2 / piata))"
+            },
+            {
+              "id": "s2",
+              "graph": "(c / cumpara-00 :aspect Performance :actor (e / ea :ref-person 3rd :ref-number Singular) :theme (m2 / mar))"
+            },
+            {
+              "id": "s3",
+              "graph": "(v / veni-00 :aspect Performance :actor (e2 / ea :ref-person 3rd :ref-number Singular) :goal (a / acasa) :time (a2 / apoi))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(PAST_REF :contains s1)", "(s1 :before s2)", "(s2 :before s3)"],
+            "modal": ["(AUTH :FullAff s1)", "(AUTH :FullAff s2)", "(AUTH :FullAff s3)"],
+            "coref": ["(p :same-entity e)", "(e :same-entity e2)"]
+          }
+        }
+
+  - example_21_existence:
+      input: "Exista o pisica in gradina."
+      explanation: "Existential uses exist-91 with :ARG roles."
+      output: |
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(e / exist-91 :aspect State :ARG1 (p / pisica) :place (g / gradina))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(DCT :contains s1)"],
+            "modal": ["(AUTH :FullAff s1)"]
+          }
+        }
+
+  - example_22_passive_impersonal:
+      input: "Se construieste o casa."
+      explanation: "Passive/impersonal. No actor, only undergoer."
+      output: |
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(c / construi-00 :aspect Activity :undergoer (c2 / casa))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(DCT :overlap s1)"],
+            "modal": ["(AUTH :FullAff s1)"]
+          }
+        }

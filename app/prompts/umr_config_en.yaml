@@ -1,360 +1,524 @@
 project_context:
   language: "english"
   task_type: "text_to_umr_parsing"
-  version: "2.0_deep_semantic"
-  target_standard: "UMR 1.0 Guidelines (Sentence + Temporal Focus)"
+  version: "0.9_strict"
+  target_standard: "UMR 0.9 Guidelines (Stage 1)"
 
 system_prompt: |
-  You are an elite Computational Linguist specialized in Uniform Meaning Representation (UMR).
-  Your task is to parse English text into valid UMR graphs (Penman notation).
+  You are an expert UMR 0.9 Annotator for English (Stage 1: Resource-Rich Language).
 
-  !!! RESEARCH GRADE REQUIREMENT !!!
-  We are analyzing Cognitive Load. The structure of your graph MUST reflect the true semantic complexity.
+  Your task is to parse English text into valid UMR graphs following the UMR 0.9 specification.
 
-  ╔═══════════════════════════════════════════════════════════════╗
-  ║ MANDATORY: Every event node MUST have :aspect annotation     ║
-  ║ Event nodes: concepts ending in -01, -02, -03, -04, -05, etc ║
-  ║ Valid aspects: state, activity, accomplishment, achievement   ║
-  ║ Missing :aspect = VALIDATION FAILURE                          ║
-  ╚═══════════════════════════════════════════════════════════════╝
+  ### 1. PREDICATES AND ROLES (STAGE 1)
 
-  ### 1. ESSENTIAL UMR ATTRIBUTES (Must be present)
-  
-  A. ASPECT (The Cognitive Timer)
-     You MUST disambiguate the English "-ing" form:
-     - "He is running" -> :aspect activity
-     - "He is building a shed" -> :aspect accomplishment (has endpoint)
-     - "He is winning" -> :aspect achievement (momentary)
-     - "He loves" -> :aspect state
+  A. PROPBANK FRAMES
+     Use English PropBank frame files for predicates:
+     - run-02, eat-01, write-01, leave-11, arrive-01, etc.
+     - Map verbs to their correct PropBank sense numbers
 
-  B. TEMPORAL RELATIONS
-     - Pay attention to "After", "Before", "While". These keywords dictate the structure of the graph (:time relations).
-     - If the text implies a sequence without keywords, arrange the graph hierarchy to reflect dependency.
+  B. NUMBERED ARGUMENTS
+     Use numbered arguments as defined in PropBank frames:
+     - :ARG0 (typically agent/cause)
+     - :ARG1 (typically patient/theme)
+     - :ARG2 (typically instrument/benefactive/attribute)
+     - :ARG3, :ARG4, :ARG5 as needed
 
-  C. MODALITY & SCOPE
-     - Distinguish "must" (obligation) from "must" (inference: 'he must be home').
-     - Use specific predicates like (o / obligate-01) or (i / infer-01) where possible, or standard :mode attributes if simpler.
+  ### 2. ASPECT (MANDATORY FOR ALL EVENTS)
 
-  ### 2. ENGLISH LINGUISTIC HANDLING
+  Every event node MUST have an :aspect attribute using ONLY these UMR 0.9 values:
+  - State: Static, unchanging situations (know, love, is tall, have-role-91)
+  - Activity: Ongoing process with no inherent endpoint (run, play, work, swim)
+  - Performance: Goal-oriented event with an endpoint (build, arrive, win, die, leave, eat)
+  - Habitual: Recurring pattern (He smokes daily, She goes every morning)
+  - Endeavor: Process attempting but failing to reach a goal (try to reach, attempt)
 
-  A. PHRASAL VERBS
-     - "Give up", "Break down", "Take off".
-     - Do NOT map as 'give' + 'up'. Map to the specific meaning: 'surrender-01', 'collapse-01'.
-     - This matches human processing (we treat phrasal verbs as single concepts).
+  DO NOT use 'accomplishment' or 'achievement' - use 'Performance' instead.
 
-  B. PASSIVE VOICE
-     - "The apple was eaten by the boy."
-     - The graph MUST be identical to active voice ("Boy ate apple") regarding ARG0/ARG1 roles.
-     - Focus on the *semantic* doer, not the syntactic subject.
+  ### 3. ABSTRACT CONCEPTS (NO COPULA VERBS)
 
-  ### 3. DOCUMENT STRUCTURE (CRITICAL FOR CONSISTENCY)
+  NEVER use be-01, be-02, or :domain for non-verbal predicates.
+  Use UMR Abstract Concepts ending in -91:
 
-  **MANDATORY RULE FOR MULTI-SENTENCE TEXTS:**
-  - If the input text has 2 or more sentences, you MUST use the (multi-sentence) root structure.
-  - Use :snt1, :snt2, :snt3, ... to number SEMANTIC UNITS (not individual grammatical sentences).
-  - DO NOT use (document), (d / document), or any other structure.
-  - Variables can be reused across sentences (reentrancy) when the same entity is referenced.
+  A. IDENTITY/ROLE
+     "He is a doctor" -> have-role-91
+     (h / have-role-91
+        :aspect State
+        :ARG1 (p / person)
+        :ARG3 (d / doctor))
 
-  **CRITICAL: SENTENCE GROUPING STRATEGY**
-  - Group 3-5 related grammatical sentences into ONE :snt node when they share:
-    * Same topic or discourse unit
-    * Same temporal context
-    * Same actors/participants
-  - Only create a new :snt node when there's a clear topic shift, time shift, or discourse boundary
-  - For a 50-sentence document, aim for 10-15 :snt nodes (NOT 50!)
-  - This reflects human cognitive chunking and prevents graph explosion
+  B. PROPERTY/MODIFICATION
+     "The car is red" -> have-mod-91
+     (h / have-mod-91
+        :aspect State
+        :ARG1 (c / car)
+        :ARG2 (r / red))
 
-  **COMPLEXITY CALIBRATION RULE:**
-  - Expected concept count ≈ word count (1 concept per word as guideline)
-  - For 100-word text: aim for 80-120 concepts
-  - For 500-word text: aim for 400-600 concepts
-  - DO NOT over-segment events or create unnecessary intermediate nodes
-  - DO NOT create redundant person/entity nodes if they can be reused via reentrancy
+  C. POSSESSION (THETIC)
+     "I have a car" -> have-91
+     (h / have-91
+        :aspect State
+        :ARG1 (i / i)
+        :ARG2 (c / car))
 
-  **Example (CORRECT - Multiple sentences in one :snt):**
-  Text: "Mary left. She went home. There her family was waiting."
-  Output:
-  (m / multi-sentence
-     :snt1 (l / leave-11
-         :aspect achievement
-         :ARG0 (p / person :name (n / name :op1 "Mary"))
-         :time (a / after
-            :op1 (g / go-01
-               :aspect achievement
-               :ARG0 p
-               :ARG4 (h / home)
-               :location (w / wait-01
-                  :aspect activity
-                  :ARG0 (f / family :poss p)
-                  :ARG1 p))))))
+  D. EXISTENCE
+     "There is a cat" -> exist-91
+     (e / exist-91
+        :aspect State
+        :ARG1 (c / cat))
 
-  ### 4. PENMAN SYNTAX RULES (FOLLOW EXACTLY)
+  E. LOCATION
+     "The book is on the table" -> have-location-91
+     (h / have-location-91
+        :aspect State
+        :ARG1 (b / book)
+        :ARG2 (t / table))
 
-  **A. BASIC STRUCTURE**
-  Every node MUST follow this pattern:
-  (variable / concept-frame
-     :role1 value1
-     :role2 value2)
+  ### 4. OUTPUT FORMAT (CRITICAL)
 
-  **B. CORRECT SYNTAX PATTERNS**
-  ✓ CORRECT: (p / person :name (n / name :op1 "John"))
-  ✓ CORRECT: (e / eat-01 :aspect activity :ARG0 (p / person))
-  ✓ CORRECT: (l / leave-11 :aspect achievement :ARG0 h :time (a / after :op1 (e / eat-01)))
-
-  ✗ WRONG: (p / person (n / name))  ← Missing role before nested node
-  ✗ WRONG: (e / eat-01 :ARG0 p :aspect)  ← Role without value
-  ✗ WRONG: (n / name :op1 "United" "States")  ← Multiple strings in one :op
-  ✗ WRONG: :aspect activity (e / eat-01)  ← Role before variable declaration
-
-  **C. NAME FORMATTING (CRITICAL)**
-  Multi-word names MUST use separate :op1, :op2, :op3:
-  - ONE word: (n / name :op1 "Mary")
-  - TWO words: (n / name :op1 "New" :op2 "York")
-  - THREE words: (n / name :op1 "United" :op2 "States" :op3 "America")
-
-  NEVER write: :op1 "United" "States" or :op1 "United States"
-
-  **D. EVENT NODES (MANDATORY ASPECT)**
-  EVERY concept ending in -01, -02, -03, -04, -05, -11, -91 MUST have :aspect:
-
-  ✓ CORRECT:
-  (e / eat-01
-     :aspect accomplishment
-     :ARG0 (p / person))
-
-  ✗ WRONG:
-  (e / eat-01
-     :ARG0 (p / person))  ← Missing :aspect
-
-  **E. ROLE PLACEMENT**
-  Roles (:ARG0, :aspect, :time, etc.) MUST come AFTER the variable/concept declaration:
-
-  ✓ CORRECT: (e / eat-01 :aspect activity :ARG0 (p / person))
-  ✗ WRONG: :aspect activity (e / eat-01)
-
-  **F. PARENTHESES BALANCE**
-  Every opening ( MUST have a closing )
-  Count opening and closing parentheses - they MUST be equal
-
-  **G. JSON OUTPUT FORMAT**
-  Return ONLY valid JSON:
+  Return ONLY valid JSON with this structure:
   {
-    "umr_graph": "(e / eat-01\n   :aspect activity\n   :ARG0 (p / person))"
+    "sentences": [
+      {"id": "s1", "graph": "(...)"},
+      {"id": "s2", "graph": "(...)"}
+    ],
+    "doc_level": {
+      "temporal": ["(PAST_REF :contains s1)", "(s1 :before s2)"],
+      "modal": ["(AUTH :FullAff s1)"],
+      "coref": ["(p :same-entity p2)"]
+    }
   }
 
-  - NO markdown formatting
-  - NO code blocks
-  - NO explanations
-  - NO comments (no semicolons)
+  A. SENTENCE GRAPHS
+     - Each sentence gets its own graph in the "sentences" array
+     - Use sequential IDs: s1, s2, s3, etc.
+     - Each graph is a complete Penman notation string
+
+  B. DOCUMENT-LEVEL ANNOTATIONS
+     - temporal: Temporal relations between sentences and DCT (Document Creation Time)
+       * DCT: Document Creation Time reference point
+       * PAST_REF: Past time reference
+       * FUTURE_REF: Future time reference
+       * Relations: :before, :after, :overlap, :contains
+     - modal: Author commitment to events
+       * AUTH: Author epistemic stance
+       * :FullAff (full affirmative), :PartAff (partial), :FullNeg (full negative)
+     - coref: Cross-sentence coreference
+       * :same-entity for entity coreference
+       * :same-event for event coreference
+
+  ### 5. PENMAN SYNTAX RULES
+
+  A. BASIC STRUCTURE
+     (variable / concept-frame
+        :role1 value1
+        :role2 value2)
+
+  B. NAME FORMATTING
+     Multi-word names MUST use separate operators:
+     - ONE word: (n / name :op1 "Mary")
+     - TWO words: (n / name :op1 "New" :op2 "York")
+     - THREE words: (n / name :op1 "United" :op2 "States" :op3 "America")
+
+  C. ASPECT PLACEMENT
+     Aspect comes immediately after the concept:
+     (e / eat-01
+        :aspect Performance
+        :ARG0 (p / person)
+        :ARG1 (a / apple))
+
+  D. PARENTHESES BALANCE
+     Every opening ( MUST have a closing )
+
+  E. NO MARKDOWN OR COMMENTS
+     - No code blocks
+     - No explanations outside JSON
+     - No semicolon comments
 
 few_shot_examples:
-  - example_1_temporal_after:
+  - example_1_simple_transitive:
+      input: "The boy ate the apple quickly."
+      explanation: "Simple transitive with manner. Performance aspect for completed action."
+      output: |
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(e / eat-01 :aspect Performance :ARG0 (b / boy) :ARG1 (a / apple) :manner (q / quick))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(PAST_REF :contains s1)"],
+            "modal": ["(AUTH :FullAff s1)"]
+          }
+        }
+
+  - example_2_identity_role:
+      input: "Mary is a doctor. She works here."
+      explanation: "Identity predication uses have-role-91. Two sentences with coreference."
+      output: |
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(h / have-role-91 :aspect State :ARG1 (p / person :name (n / name :op1 \"Mary\")) :ARG3 (d / doctor))"
+            },
+            {
+              "id": "s2",
+              "graph": "(w / work-01 :aspect Activity :ARG0 (p2 / person) :location (h2 / here))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(DCT :contains s1)", "(s1 :overlap s2)"],
+            "modal": ["(AUTH :FullAff s1)", "(AUTH :FullAff s2)"],
+            "coref": ["(p :same-entity p2)"]
+          }
+        }
+
+  - example_3_property:
+      input: "The car is red."
+      explanation: "Property predication uses have-mod-91."
+      output: |
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(h / have-mod-91 :aspect State :ARG1 (c / car) :ARG2 (r / red))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(DCT :contains s1)"],
+            "modal": ["(AUTH :FullAff s1)"]
+          }
+        }
+
+  - example_4_existence:
+      input: "There is a cat on the mat."
+      explanation: "Existential uses exist-91 with location."
+      output: |
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(e / exist-91 :aspect State :ARG1 (c / cat) :location (m / mat))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(DCT :contains s1)"],
+            "modal": ["(AUTH :FullAff s1)"]
+          }
+        }
+
+  - example_5_temporal_after:
       input: "After he finished eating, he left immediately."
-      explanation: "Temporal sequence with 'after'. Reentrancy on 'he'."
+      explanation: "Temporal sequence with after. Performance aspect for completed events."
       output: |
-        (l / leave-11
-           :aspect achievement
-           :ARG0 (h / he)
-           :time (a / after
-               :op1 (e / eat-01
-                   :aspect accomplishment
-                   :ARG0 h
-                   :ARG1-of (f / finish-01
-                       :aspect accomplishment)))
-           :mod (i / immediate))
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(l / leave-11 :aspect Performance :ARG0 (h / he) :time (a / after :op1 (f / finish-01 :aspect Performance :ARG0 h :ARG1 (e / eat-01 :aspect Performance :ARG0 h))) :manner (i / immediate))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(PAST_REF :contains s1)"],
+            "modal": ["(AUTH :FullAff s1)"]
+          }
+        }
 
-  - example_2_temporal_before:
+  - example_6_temporal_before:
       input: "Before he left, he ate quickly."
-      explanation: "Temporal 'before'. Event ordering."
+      explanation: "Temporal before relation."
       output: |
-        (e / eat-01
-           :aspect accomplishment
-           :ARG0 (h / he)
-           :time (b / before
-               :op1 (l / leave-11
-                   :aspect achievement
-                   :ARG0 h))
-           :manner (q / quick))
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(e / eat-01 :aspect Performance :ARG0 (h / he) :time (b / before :op1 (l / leave-11 :aspect Performance :ARG0 h)) :manner (q / quick))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(PAST_REF :contains s1)"],
+            "modal": ["(AUTH :FullAff s1)"]
+          }
+        }
 
-  - example_3_negation_simple:
+  - example_7_negation:
       input: "He did not come yesterday."
-      explanation: "Simple negation of past event."
+      explanation: "Simple negation with polarity."
       output: |
-        (c / come-01
-           :aspect achievement
-           :ARG1 (h / he)
-           :polarity -
-           :time (y / yesterday))
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(c / come-01 :aspect Performance :ARG1 (h / he) :polarity - :time (y / yesterday))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(PAST_REF :contains s1)"],
+            "modal": ["(AUTH :FullNeg s1)"]
+          }
+        }
 
-  - example_4_negation_quantifier:
-      input: "Not all students arrived."
-      explanation: "Negation scopes over quantifier 'all'."
-      output: |
-        (a / arrive-01
-           :aspect achievement
-           :ARG1 (s / student
-               :quant (a2 / all
-                   :polarity -)))
-
-  - example_5_modal_obligation:
+  - example_8_modal_obligation:
       input: "He must leave now."
-      explanation: "Modal obligation (deontic must)."
+      explanation: "Modal obligation with obligate-01."
       output: |
-        (o / obligate-01
-           :aspect state
-           :ARG1 (l / leave-11
-               :aspect achievement
-               :ARG0 (h / he))
-           :time (n / now))
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(o / obligate-01 :aspect State :ARG1 (l / leave-11 :aspect Performance :ARG0 (h / he)) :time (n / now))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(DCT :overlap s1)"],
+            "modal": ["(AUTH :FullAff s1)"]
+          }
+        }
 
-  - example_6_modal_volition:
+  - example_9_modal_want:
       input: "I want to read a book."
-      explanation: "Modal volition (desire). Control verb."
+      explanation: "Volitional modal with control verb."
       output: |
-        (w / want-01
-           :aspect state
-           :ARG0 (i / i)
-           :ARG1 (r / read-01
-               :aspect activity
-               :ARG0 i
-               :ARG1 (b / book)))
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(w / want-01 :aspect State :ARG0 (i / i) :ARG1 (r / read-01 :aspect Activity :ARG0 i :ARG1 (b / book)))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(DCT :overlap s1)"],
+            "modal": ["(AUTH :FullAff s1)"]
+          }
+        }
 
-  - example_7_modal_ability:
+  - example_10_modal_ability:
       input: "She can run fast."
-      explanation: "Modal ability (can)."
+      explanation: "Ability modal with possible-01."
       output: |
-        (p / possible-01
-           :aspect state
-           :ARG1 (r / run-01
-               :aspect activity
-               :ARG0 (s / she)
-               :manner (f / fast)))
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(p / possible-01 :aspect State :ARG1 (r / run-01 :aspect Activity :ARG0 (s / she) :manner (f / fast)))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(DCT :contains s1)"],
+            "modal": ["(AUTH :FullAff s1)"]
+          }
+        }
 
-  - example_8_coordination_np:
+  - example_11_coordination:
       input: "Mary and John left together."
-      explanation: "NP coordination with 'and'."
+      explanation: "NP coordination with and."
       output: |
-        (l / leave-11
-           :aspect achievement
-           :ARG0 (a / and
-               :op1 (p1 / person
-                   :name (n1 / name :op1 "Mary"))
-               :op2 (p2 / person
-                   :name (n2 / name :op1 "John")))
-           :manner (t / together))
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(l / leave-11 :aspect Performance :ARG0 (a / and :op1 (p1 / person :name (n1 / name :op1 \"Mary\")) :op2 (p2 / person :name (n2 / name :op1 \"John\"))) :manner (t / together))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(PAST_REF :contains s1)"],
+            "modal": ["(AUTH :FullAff s1)"]
+          }
+        }
 
-  - example_9_reentrancy_control:
+  - example_12_control_verb:
       input: "He tries to run faster."
       explanation: "Control verb with reentrancy."
       output: |
-        (t / try-01
-           :aspect activity
-           :ARG0 (h / he)
-           :ARG1 (r / run-01
-               :aspect activity
-               :ARG0 h
-               :manner (f / fast
-                   :degree (m / more))))
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(t / try-01 :aspect Endeavor :ARG0 (h / he) :ARG1 (r / run-01 :aspect Activity :ARG0 h :manner (f / fast :degree (m / more))))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(DCT :overlap s1)"],
+            "modal": ["(AUTH :FullAff s1)"]
+          }
+        }
 
-  - example_10_passive_voice:
+  - example_13_passive:
       input: "The book was written by the author."
-      explanation: "Passive voice. Focus on semantic roles, not syntax."
+      explanation: "Passive voice. Semantic roles remain the same."
       output: |
-        (w / write-01
-           :aspect accomplishment
-           :ARG0 (a / author)
-           :ARG1 (b / book))
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(w / write-01 :aspect Performance :ARG0 (a / author) :ARG1 (b / book))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(PAST_REF :contains s1)"],
+            "modal": ["(AUTH :FullAff s1)"]
+          }
+        }
 
-  - example_11_complex_negation_modal:
+  - example_14_state_aspect:
+      input: "She knows the answer."
+      explanation: "State aspect for cognitive verbs."
+      output: |
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(k / know-01 :aspect State :ARG0 (s / she) :ARG1 (a / answer))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(DCT :contains s1)"],
+            "modal": ["(AUTH :FullAff s1)"]
+          }
+        }
+
+  - example_15_phrasal_verb:
+      input: "He gave up smoking."
+      explanation: "Phrasal verb mapped to semantic meaning quit-01."
+      output: |
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(q / quit-01 :aspect Performance :ARG0 (h / he) :ARG1 (s / smoke-02 :aspect Activity :ARG0 h))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(PAST_REF :contains s1)"],
+            "modal": ["(AUTH :FullAff s1)"]
+          }
+        }
+
+  - example_16_conditional:
+      input: "If he came, I would see him."
+      explanation: "Hypothetical conditional."
+      output: |
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(c / condition-01 :aspect State :ARG1 (s / see-01 :aspect Performance :ARG0 (i / i) :ARG1 (h / he)) :ARG2 (c2 / come-01 :aspect Performance :ARG1 h :modal Hypothetical))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(DCT :overlap s1)"],
+            "modal": ["(AUTH :PartAff s1)"]
+          }
+        }
+
+  - example_17_habitual:
+      input: "She runs every morning."
+      explanation: "Habitual aspect for recurring patterns."
+      output: |
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(r / run-01 :aspect Habitual :ARG0 (s / she) :frequency (m / morning :mod (e / every)))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(DCT :overlap s1)"],
+            "modal": ["(AUTH :FullAff s1)"]
+          }
+        }
+
+  - example_18_multi_sentence:
+      input: "Mary went to the market. She bought apples. Then she came home."
+      explanation: "Multi-sentence with temporal sequence and coreference."
+      output: |
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(g / go-01 :aspect Performance :ARG0 (p / person :name (n / name :op1 \"Mary\")) :ARG4 (m / market))"
+            },
+            {
+              "id": "s2",
+              "graph": "(b / buy-01 :aspect Performance :ARG0 (p2 / person) :ARG1 (a / apple))"
+            },
+            {
+              "id": "s3",
+              "graph": "(c / come-01 :aspect Performance :ARG1 (p3 / person) :ARG4 (h / home) :time (t / then))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(PAST_REF :contains s1)", "(s1 :before s2)", "(s2 :before s3)"],
+            "modal": ["(AUTH :FullAff s1)", "(AUTH :FullAff s2)", "(AUTH :FullAff s3)"],
+            "coref": ["(p :same-entity p2)", "(p2 :same-entity p3)"]
+          }
+        }
+
+  - example_19_possession:
+      input: "John has a car."
+      explanation: "Thetic possession uses have-91."
+      output: |
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(h / have-91 :aspect State :ARG1 (p / person :name (n / name :op1 \"John\")) :ARG2 (c / car))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(DCT :contains s1)"],
+            "modal": ["(AUTH :FullAff s1)"]
+          }
+        }
+
+  - example_20_location:
+      input: "The book is on the table."
+      explanation: "Locative predication uses have-location-91."
+      output: |
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(h / have-location-91 :aspect State :ARG1 (b / book) :ARG2 (t / table))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(DCT :contains s1)"],
+            "modal": ["(AUTH :FullAff s1)"]
+          }
+        }
+
+  - example_21_negated_quantifier:
+      input: "Not all students arrived."
+      explanation: "Negation scopes over quantifier."
+      output: |
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(a / arrive-01 :aspect Performance :ARG1 (s / student :quant (a2 / all :polarity -)))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(PAST_REF :contains s1)"],
+            "modal": ["(AUTH :PartAff s1)"]
+          }
+        }
+
+  - example_22_complex_modal_temporal:
       input: "I don't want to leave before I finish."
       explanation: "Negated modal with temporal subordinate clause."
       output: |
-        (w / want-01
-           :aspect state
-           :ARG0 (i / i)
-           :polarity -
-           :ARG1 (l / leave-11
-               :aspect achievement
-               :ARG0 i
-               :time (b / before
-                   :op1 (f / finish-01
-                       :aspect accomplishment
-                       :ARG0 i))))
-
-  - example_12_state_aspect:
-      input: "She knows the answer."
-      explanation: "State aspect. No change over time."
-      output: |
-        (k / know-01
-           :aspect state
-           :ARG0 (s / she)
-           :ARG1 (a / answer))
-
-  - example_13_phrasal_verb:
-      input: "He gave up smoking."
-      explanation: "Phrasal verb 'give up' = surrender/quit."
-      output: |
-        (q / quit-01
-           :aspect achievement
-           :ARG0 (h / he)
-           :ARG1 (s / smoke-02
-               :aspect activity
-               :ARG0 h))
-
-  - example_14_conditional_hypothetical:
-      input: "If he came, I would see him."
-      explanation: "Hypothetical conditional. Modal reality."
-      output: |
-        (c / condition-01
-           :aspect state
-           :ARG1 (s / see-01
-               :aspect achievement
-               :ARG0 (i / i)
-               :ARG1 (h / he))
-           :ARG2 (c2 / come-01
-               :aspect achievement
-               :ARG1 h
-               :modal Hypothetical))
-
-  - example_15_progressive_activity:
-      input: "She is running in the park."
-      explanation: "Progressive aspect indicates ongoing activity."
-      output: |
-        (r / run-01
-           :aspect activity
-           :ARG0 (s / she)
-           :location (p / park))
-
-  - example_16_multi_sentence_document:
-      input: "Mary went to the market. She bought apples. Then she came home. There she prepared dinner. The family ate together."
-      explanation: "CRITICAL: Multi-sentence documents must group related sentences into semantic units. Here: 3 sentences about shopping trip = :snt1, then 2 sentences about home activity = :snt2. Do NOT create 5 separate :snt nodes!"
-      output: |
-        (m / multi-sentence
-           :snt1 (g / go-01
-               :aspect achievement
-               :ARG0 (p / person
-                   :name (n / name :op1 "Mary"))
-               :ARG4 (m2 / market)
-               :ARG1-of (c / cause-01
-                  :aspect state
-                  :ARG0 (b / buy-01
-                     :aspect achievement
-                     :ARG0 p
-                     :ARG1 (a / apple))
-                  :time (b2 / before
-                     :op1 (c2 / come-01
-                        :aspect achievement
-                        :ARG1 p
-                        :ARG4 (h / home)
-                        :time (t / then)))))
-           :snt2 (p2 / prepare-02
-               :aspect accomplishment
-               :ARG0 p
-               :ARG1 (d / dinner)
-               :location h
-               :ARG1-of (f / follow-02
-                  :aspect state
-                  :ARG2 (e / eat-01
-                     :aspect activity
-                     :ARG0 (f2 / family :poss p)
-                     :manner (t2 / together)))))
+        {
+          "sentences": [
+            {
+              "id": "s1",
+              "graph": "(w / want-01 :aspect State :ARG0 (i / i) :polarity - :ARG1 (l / leave-11 :aspect Performance :ARG0 i :time (b / before :op1 (f / finish-01 :aspect Performance :ARG0 i))))"
+            }
+          ],
+          "doc_level": {
+            "temporal": ["(DCT :overlap s1)"],
+            "modal": ["(AUTH :FullNeg s1)"]
+          }
+        }

@@ -16,20 +16,29 @@ class SoftSmatchCalculator:
         self.model = SentenceTransformer(model_name)
 
     def extract_concepts(self, umr_str: str) -> List[str]:
-        try:
-            graph = penman.decode(umr_str)
-            concepts = []
-
-            for triple in graph.instances():
-                concept = triple.target
-                if concept:
-                    concepts.append(str(concept))
-
-            return concepts
-
-        except Exception as e:
-            logger.warning(f"Failed to extract concepts: {e}")
+        if not umr_str or not umr_str.strip():
             return []
+
+        concepts = []
+
+        graph_strings = umr_str.strip().split('\n\n')
+
+        for graph_str in graph_strings:
+            graph_str = graph_str.strip()
+            if not graph_str:
+                continue
+
+            try:
+                graph = penman.decode(graph_str)
+                for triple in graph.instances():
+                    concept = triple.target
+                    if concept:
+                        concepts.append(str(concept))
+            except Exception as e:
+                logger.debug(f"Failed to parse one graph segment: {e}")
+                continue
+
+        return concepts
 
     def calculate(self, human_umr: str, llm_umr: str, threshold: float = 0.75) -> Dict:
         if not human_umr or not human_umr.strip() or not llm_umr or not llm_umr.strip():

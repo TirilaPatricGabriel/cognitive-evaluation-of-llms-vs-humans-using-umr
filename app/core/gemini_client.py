@@ -18,7 +18,7 @@ def is_gemini_3_model(model_name: str) -> bool:
     return model_name.startswith("gemini-3")
 
 
-def call_gemini(prompt: str, model_name: str = None, thinking_level: str = "HIGH", temperature: float = None, max_retries: int = 3) -> str:
+def call_gemini(prompt: str, model_name: str = None, thinking_level: str = "LOW", temperature: float = None, max_retries: int = 3) -> str:
     if model_name is None:
         model_name = settings.MODEL
 

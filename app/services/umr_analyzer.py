@@ -14,12 +14,46 @@ class UMRAnalyzer:
 
     @staticmethod
     def parse_penman(penman_string: str) -> Optional[Graph]:
-        try:
-            g = penman.decode(penman_string)
-            return g
-        except Exception as e:
-            logger.warning(f"Failed to parse Penman string: {e}")
+        if not penman_string or not penman_string.strip():
+            logger.debug("Empty Penman string provided")
             return None
+
+        graph_strings = penman_string.strip().split('\n\n')
+
+        for graph_str in graph_strings:
+            graph_str = graph_str.strip()
+            if not graph_str:
+                continue
+            try:
+                g = penman.decode(graph_str)
+                return g
+            except Exception as e:
+                logger.debug(f"Failed to parse graph segment: {e}")
+                continue
+
+        logger.warning(f"Failed to parse any Penman graph from input")
+        return None
+
+    @staticmethod
+    def parse_all_penman(penman_string: str) -> List[Graph]:
+        """Parse all graphs from a multi-sentence UMR string."""
+        if not penman_string or not penman_string.strip():
+            return []
+
+        graphs = []
+        graph_strings = penman_string.strip().split('\n\n')
+
+        for graph_str in graph_strings:
+            graph_str = graph_str.strip()
+            if not graph_str:
+                continue
+            try:
+                g = penman.decode(graph_str)
+                graphs.append(g)
+            except Exception:
+                continue
+
+        return graphs
 
     @staticmethod
     def to_networkx(penman_graph: Graph) -> nx.DiGraph:
@@ -124,63 +158,67 @@ class UMRAnalyzer:
         return triples
 
     def analyze_complexity(self, penman_str: str) -> Dict[str, Any]:
-        pg = self.parse_penman(penman_str)
-        if not pg:
+        all_graphs = self.parse_all_penman(penman_str)
+
+        if not all_graphs:
             return {
                 "node_count": 0,
                 "graph_depth": 0,
                 "reentrancy_count": 0,
                 "aspect_state_count": 0,
                 "aspect_activity_count": 0,
-                "aspect_accomplishment_count": 0,
-                "aspect_achievement_count": 0,
+                "aspect_performance_count": 0,
+                "aspect_habitual_count": 0,
+                "aspect_endeavor_count": 0,
                 "total_aspect_markers": 0
             }
 
-        G = self.to_networkx(pg)
-
-        node_count = G.number_of_nodes()
-
-        try:
-            root = pg.top
-            if root in G:
-                lengths = nx.shortest_path_length(G, source=root)
-                max_depth = max(lengths.values()) if lengths else 0
-            else:
-                max_depth = 0
-        except Exception:
-            max_depth = 0
-
-        reentrancy_count = 0
-        for node in G.nodes():
-            if G.nodes[node].get('type') == 'instance':
-                if G.in_degree(node) > 1:
-                    reentrancy_count += 1
-
+        total_node_count = 0
+        max_depth = 0
+        total_reentrancy = 0
         aspect_counts = {
             "state": 0,
             "activity": 0,
-            "accomplishment": 0,
-            "achievement": 0,
+            "performance": 0,
             "habitual": 0,
+            "endeavor": 0,
             "total_events": 0
         }
 
-        for triple in pg.attributes():
-            if triple.role == ':aspect':
-                aspect_counts["total_events"] += 1
-                clean_target = str(triple.target).strip('"').lower()
-                if clean_target in aspect_counts:
-                    aspect_counts[clean_target] += 1
+        for pg in all_graphs:
+            G = self.to_networkx(pg)
+            total_node_count += G.number_of_nodes()
+
+            try:
+                root = pg.top
+                if root in G:
+                    lengths = nx.shortest_path_length(G, source=root)
+                    graph_depth = max(lengths.values()) if lengths else 0
+                    max_depth = max(max_depth, graph_depth)
+            except Exception:
+                pass
+
+            for node in G.nodes():
+                if G.nodes[node].get('type') == 'instance':
+                    if G.in_degree(node) > 1:
+                        total_reentrancy += 1
+
+            for triple in pg.attributes():
+                if triple.role == ':aspect':
+                    aspect_counts["total_events"] += 1
+                    clean_target = str(triple.target).strip('"').lower()
+                    if clean_target in aspect_counts:
+                        aspect_counts[clean_target] += 1
 
         return {
-            "node_count": node_count,
+            "node_count": total_node_count,
             "graph_depth": max_depth,
-            "reentrancy_count": reentrancy_count,
+            "reentrancy_count": total_reentrancy,
             "aspect_state_count": aspect_counts["state"],
             "aspect_activity_count": aspect_counts["activity"],
-            "aspect_accomplishment_count": aspect_counts["accomplishment"],
-            "aspect_achievement_count": aspect_counts["achievement"],
+            "aspect_performance_count": aspect_counts["performance"],
+            "aspect_habitual_count": aspect_counts["habitual"],
+            "aspect_endeavor_count": aspect_counts["endeavor"],
             "total_aspect_markers": aspect_counts["total_events"]
         }
 
@@ -199,12 +237,14 @@ class UMRAnalyzer:
             "human_reentrancy": h_metrics.get('reentrancy_count', 0),
             "human_aspect_state": h_metrics.get('aspect_state_count', 0),
             "human_aspect_activity": h_metrics.get('aspect_activity_count', 0),
+            "human_aspect_performance": h_metrics.get('aspect_performance_count', 0),
             "human_total_aspects": h_metrics.get('total_aspect_markers', 0),
             "llm_node_count": l_metrics.get('node_count', 0),
             "llm_depth": l_metrics.get('graph_depth', 0),
             "llm_reentrancy": l_metrics.get('reentrancy_count', 0),
             "llm_aspect_state": l_metrics.get('aspect_state_count', 0),
             "llm_aspect_activity": l_metrics.get('aspect_activity_count', 0),
+            "llm_aspect_performance": l_metrics.get('aspect_performance_count', 0),
             "llm_total_aspects": l_metrics.get('total_aspect_markers', 0),
             "delta_nodes": l_metrics.get('node_count', 0) - h_metrics.get('node_count', 0),
             "delta_depth": l_metrics.get('graph_depth', 0) - h_metrics.get('graph_depth', 0),
@@ -261,15 +301,11 @@ class UMRAnalyzer:
                 "coherence_trend": "More connected (LLM)" if avg_delta_reentrancy > 0 else "Less connected (LLM)" if avg_delta_reentrancy < 0 else "Similar coherence"
             }
         }
-        
-        
-    def analyze_sentences(self, umr_data) -> Dict[int, Any]:
-        """
-        Compute sentence-level UMR graph statistics for comparison with sentence-level eye-tracking measures.
-        """
 
+
+    def analyze_sentences(self, umr_data) -> Dict[int, Any]:
         logging.getLogger("penman").setLevel(logging.WARNING)
-        
+
         sentence_umr_stats = {}
 
         for item in umr_data:
@@ -306,10 +342,10 @@ class UMRAnalyzer:
                     continue
 
                 num_nodes += 1
-                instance = data.get("instance") 
-                
+                instance = data.get("instance")
+
                 if isinstance(instance, str):
-                    if instance.endswith(("-01", "-02", "-03", "-04")):
+                    if instance.endswith(("-00", "-01", "-02", "-03", "-04", "-91")):
                         num_predicates += 1
                     else:
                         num_entities += 1
@@ -321,7 +357,7 @@ class UMRAnalyzer:
                 deg = G.degree(node)
                 degrees.append(deg)
 
-                if instance in {"and-01", "or-01"}:
+                if instance in {"and-01", "or-01", "and", "or"}:
                     num_coordination += 1
 
                 if instance == "temporal-quantity":
@@ -344,19 +380,15 @@ class UMRAnalyzer:
                 "num_temporal_quantities": num_temporal_quantities
             }
 
-        # Limit to 2 decimal places
         for sentence_id, stats in sentence_umr_stats.items():
             for key, value in stats.items():
                 if isinstance(value, float):
                     stats[key] = round(value, 2)
-                    
+
         return sentence_umr_stats
-    
-    
+
+
     def analyze_nodes(self, umr_data: list) -> pd.DataFrame:
-        """
-        Compute node-level UMR graph statistics for comparison with word-level eye-tracking measures.
-        """
         rows = []
 
         for item in umr_data:
@@ -372,13 +404,11 @@ class UMRAnalyzer:
             G = self.to_networkx(pg)
             root = pg.top
 
-            # Compute depths
             try:
                 depths = nx.shortest_path_length(G, source=root)
             except Exception:
                 depths = {}
 
-            # Build node -> words mapping
             node_to_words = {}
             for node in G.nodes():
                 if sentence_id == 0:
@@ -389,7 +419,6 @@ class UMRAnalyzer:
 
                 words = []
 
-                # :name nodes -> combine :op* attributes
                 if instance == "name" and node_type == "instance":
                     for succ in G.successors(node):
                         succ_data = G.nodes[succ]
@@ -398,7 +427,6 @@ class UMRAnalyzer:
                             if val:
                                 words.append(val)
 
-                # date-entity -> :year attributes
                 elif instance == "date-entity":
                     for succ in G.successors(node):
                         succ_data = G.nodes[succ]
@@ -407,7 +435,6 @@ class UMRAnalyzer:
                             if val:
                                 words.append(str(val))
 
-                # Normal instance node
                 elif instance:
                     words.append(instance)
 

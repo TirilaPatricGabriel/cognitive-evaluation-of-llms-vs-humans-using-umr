@@ -6,11 +6,6 @@ class UMRVisualizer:
 
     @staticmethod
     def parse_penman_structure(umr_graph: str) -> Dict:
-        """
-        Parse basic structure from Penman notation.
-
-        Returns statistics and structural information about the UMR graph.
-        """
         umr_graph = umr_graph.strip()
 
         stats = {
@@ -25,20 +20,19 @@ class UMRVisualizer:
         }
 
         aspects = re.findall(r':aspect\s+([\w\-]+)', umr_graph)
-        roles = re.findall(r':(ARG\d+|op\d+|time|mod|aspect|polarity)', umr_graph)
+        roles = re.findall(r':(ARG\d+|op\d+|time|mod|aspect|polarity|actor|undergoer|theme|recipient|experiencer)', umr_graph)
         concepts = re.findall(r'/\s*([\w\-]+)', umr_graph)
 
         return {
             'stats': stats,
             'aspects': list(set(aspects)),
             'roles': list(set(roles)),
-            'concepts': concepts[:10],  
+            'concepts': concepts[:10],
             'main_concept': concepts[0] if concepts else None
         }
 
     @staticmethod
     def _calculate_depth(umr_graph: str) -> int:
-        """Calculate maximum nesting depth of the graph."""
         max_depth = 0
         current_depth = 0
 
@@ -53,9 +47,6 @@ class UMRVisualizer:
 
     @staticmethod
     def format_for_display(umr_graph: str) -> str:
-        """
-        Format UMR graph for readable display with proper indentation.
-        """
         if not umr_graph:
             return ""
 
@@ -97,9 +88,6 @@ class UMRVisualizer:
 
     @staticmethod
     def compare_graphs(graph1: str, graph2: str) -> Dict:
-        """
-        Compare two UMR graphs and return similarity metrics.
-        """
         struct1 = UMRVisualizer.parse_penman_structure(graph1)
         struct2 = UMRVisualizer.parse_penman_structure(graph2)
 
@@ -117,10 +105,16 @@ class UMRVisualizer:
 
     @staticmethod
     def create_visualization_summary(parsed_result: Dict) -> Dict:
-        """
-        Create a complete visualization summary for a UMR parsing result.
-        """
-        umr_graph = parsed_result.get('umr_graph', '')
+        umr_graph = ""
+
+        if 'sentences' in parsed_result:
+            graphs = []
+            for sent in parsed_result.get('sentences', []):
+                if 'graph' in sent:
+                    graphs.append(sent['graph'])
+            umr_graph = "\n\n".join(graphs)
+        elif 'umr_graph' in parsed_result:
+            umr_graph = parsed_result.get('umr_graph', '')
 
         if not umr_graph:
             return {
@@ -142,10 +136,8 @@ class UMRVisualizer:
 
 
 def visualize_umr_graph(umr_graph: str) -> str:
-    """Quick helper to visualize a single UMR graph."""
     return UMRVisualizer.format_for_display(umr_graph)
 
 
 def analyze_umr_structure(umr_graph: str) -> Dict:
-    """Quick helper to analyze UMR graph structure."""
     return UMRVisualizer.parse_penman_structure(umr_graph)

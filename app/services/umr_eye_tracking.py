@@ -41,7 +41,7 @@ class UMREyeTrackingComparator:
         eye_metrics=None,
         return_heatmap=False,
         participant_level=False,
-        level="sentence"  # "sentence" or "word"
+        level="sentence"  
     ):
         """
         Compute correlations between UMR features and eye-tracking metrics.

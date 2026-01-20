@@ -63,17 +63,15 @@ class UMREyeTrackingComparator:
             if umr_features is None:
                 umr_features = [
                     "num_nodes", "num_edges", "max_depth", "avg_depth",
-                    "num_predicates", "num_entities", "predicate_entity_ratio",
-                    "num_reentrancies", "avg_degree", "max_degree",
-                    "num_coordination", "num_temporal_quantities"
-                ]
+                    "num_predicates", "num_entities",
+                    "num_reentrancies", "avg_degree", "max_degree"]
             if eye_metrics is None:
-                eye_metrics = ["FFD_avg", "GD_avg", "GPT_avg", "TRT_avg", "TRT_sum", "nFix_avg", "nFix_sum", "reading_order_avg"]
+                eye_metrics = ["FFD_avg", "FFD_sum", "GD_avg", "GD_sum", "GPT_avg", "GPT_sum", "TRT_avg", "TRT_sum", "nFix_avg", "nFix_sum"]
         elif level == "word":
             if umr_features is None:
                 umr_features = ["depth", "degree", "in_degree", "out_degree"]
             if eye_metrics is None:
-                eye_metrics = ["FFD", "GD", "GPT", "TRT", "nFix", "reading_order"]
+                eye_metrics = ["FFD", "GD", "GPT", "TRT", "nFix"]
             if participant_level:
                 if not hasattr(self, 'df_merged_word_participants'):
                     raise ValueError("Word-level participant-level merged dataframe not available.")

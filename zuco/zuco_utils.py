@@ -43,8 +43,13 @@ def create_average_sentence_level_file(word_level_avg_file: str, output_file: st
 
     agg = df.groupby("sentence_id").agg(
         FFD_avg=("FFD_avg", "mean"),
+        FFD_sum=("FFD_avg", "sum"),
+        
         GD_avg=("GD_avg", "mean"),
+        GD_sum=("GD_avg", "sum"),
+        
         GPT_avg=("GPT_avg", "mean"),
+        GPT_sum=("GPT_avg", "sum"),
 
         TRT_avg=("TRT_avg", "mean"),
         TRT_sum=("TRT_avg", "sum"),
@@ -74,8 +79,13 @@ def create_participants_sentence_level_file(zuco_eye_file: str, output_file: str
     for subject_id, group in df.groupby("subject"):
         agg = group.groupby("sentence_id").agg(
             FFD_avg=("FFD", "mean"),
+            FFD_sum=("FFD", "sum"),
+            
             GD_avg=("GD", "mean"),
+            GD_sum=("GD", "sum"),
+            
             GPT_avg=("GPT", "mean"),
+            GPT_sum=("GPT", "sum"),
 
             TRT_avg=("TRT", "mean"),
             TRT_sum=("TRT", "sum"),

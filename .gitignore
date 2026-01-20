@@ -21,5 +21,4 @@ __pycache__/
 .claude/
 
 # Data and tests (optional, based on your untracked list)
-data/
 test_full_pipeline_multipleye.py

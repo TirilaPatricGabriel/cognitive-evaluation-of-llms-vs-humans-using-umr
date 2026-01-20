@@ -1151,25 +1151,24 @@ def compare_umr_with_eye_tracking(umr_input_file: str = None, eye_tracking_avg_s
         
     # Run mixed-effects models
     sentence_umr_features = ["num_nodes", "num_edges", "max_depth", "avg_depth",
-                             "num_predicates", "num_entities", "predicate_entity_ratio",
-                             "num_reentrancies", "avg_degree", "max_degree",
-                             "num_coordination", "num_temporal_quantities"]
-    sentence_eye_metrics = ["FFD_avg", "GD_avg", "GPT_avg", "TRT_avg", "TRT_sum", "nFix_avg", "nFix_sum", "reading_order_avg"]
+                             "num_predicates", "num_entities", 
+                             "num_reentrancies", "avg_degree", "max_degree"]
+    sentence_eye_metrics = ["FFD_avg", "FFD_sum", "GD_avg", "GD_sum", "GPT_avg", "GPT_sum", "TRT_avg", "TRT_sum", "nFix_avg", "nFix_sum"]
 
     word_umr_features = ["depth", "degree", "in_degree", "out_degree"]
-    word_eye_metrics = ["FFD", "GD", "GPT", "TRT", "nFix", "reading_order"]
+    word_eye_metrics = ["FFD", "GD", "GPT", "TRT", "nFix"]
 
     df_mixed_sent = comparator.run_mixed_effects_sent_level_batch(
         umr_features=sentence_umr_features,
         eye_metrics=sentence_eye_metrics,
-        max_features_per_model=2,
+        max_features_per_model=1,
         save_path="results/mixed_effects_results_sentence.csv"
     )
 
     df_mixed_word = comparator.run_mixed_effects_word_level_batch(
         umr_features=word_umr_features,
         eye_metrics=word_eye_metrics,
-        max_features_per_model=2,
+        max_features_per_model=1,
         save_path="results/mixed_effects_results_word.csv"
     )
 
